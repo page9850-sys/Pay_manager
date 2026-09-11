@@ -122,6 +122,41 @@
       const [currentYear, setCurrentYear] = useState(2026);
       const [currentMonth, setCurrentMonth] = useState(9);
 
+      // 월 이동 제어 함수
+      const handlePrevMonth = () => {
+        if (currentMonth === 1) {
+          setCurrentYear(prev => prev - 1);
+          setCurrentMonth(12);
+        } else {
+          setCurrentMonth(prev => prev - 1);
+        }
+      };
+
+      const handleNextMonth = () => {
+        if (currentMonth === 12) {
+          setCurrentYear(prev => prev + 1);
+          setCurrentMonth(1);
+        } else {
+          setCurrentMonth(prev => prev + 1);
+        }
+      };
+
+      const handleCurrentMonth = () => {
+        setCurrentYear(2026);
+        setCurrentMonth(9);
+      };
+
+      // 현재 선택된 월의 키 포맷 (예: "2026-09")
+      const monthKey = useMemo(() => `${currentYear}-${String(currentMonth).padStart(2, '0')}`, [currentYear, currentMonth]);
+
+      // 특정 항목의 선택된 월 기준 금액 읽기
+      const getTxAmount = (t) => {
+        if (t.history && t.history[monthKey] !== undefined) {
+          return Number(t.history[monthKey]) || 0;
+        }
+        return Number(t.actualAmount) || Number(t.estimatedAmount) || 0;
+      };
+
       // 토스트 메시지 출력 함수
       const showToast = (msg) => {
         setToastMessage(msg);
@@ -143,32 +178,32 @@
       const timeDiff = adjustedPayday.getTime() - today.getTime();
       const dDay = Math.ceil(timeDiff / (1000 * 3600 * 24));
 
-      // 메인 재원 연산식
+      // 메인 재원 연산식 (선택된 월 기준)
       const financialSummary = useMemo(() => {
         // 총 수입 (급여 + 월세 등 전체)
         const totalIncome = transactions
           .filter(t => t.type === 'INCOME')
-          .reduce((sum, t) => sum + (Number(t.actualAmount) || Number(t.estimatedAmount) || 0), 0);
+          .reduce((sum, t) => sum + getTxAmount(t), 0);
 
         // 기본 급여 수입 (월세/임대 수입 제외)
         const baseIncome = transactions
           .filter(t => t.type === 'INCOME' && (t.category === '급여' || t.title.includes('급여') || t.title.includes('기본급')))
-          .reduce((sum, t) => sum + (Number(t.actualAmount) || Number(t.estimatedAmount) || 0), 0);
+          .reduce((sum, t) => sum + getTxAmount(t), 0);
 
         // 월세 수입 재원
         const rentalIncome = transactions
           .filter(t => t.type === 'INCOME' && (t.category === '월세' || t.title.includes('월세') || t.title.includes('임대')))
-          .reduce((sum, t) => sum + (Number(t.actualAmount) || Number(t.estimatedAmount) || 0), 0);
+          .reduce((sum, t) => sum + getTxAmount(t), 0);
 
         // 고정 지출 합계
         const fixedExpense = transactions
           .filter(t => t.type === 'EXPENSE' && t.isFixed)
-          .reduce((sum, t) => sum + (Number(t.actualAmount) || Number(t.estimatedAmount) || 0), 0);
+          .reduce((sum, t) => sum + getTxAmount(t), 0);
 
         // 변동 지출 합계
         const variableExpense = transactions
           .filter(t => t.type === 'EXPENSE' && !t.isFixed)
-          .reduce((sum, t) => sum + (Number(t.actualAmount) || Number(t.estimatedAmount) || 0), 0);
+          .reduce((sum, t) => sum + getTxAmount(t), 0);
 
         // 필수 선출금 (고정비 + 변동비)
         const totalEssential = fixedExpense + variableExpense;
@@ -195,7 +230,7 @@
           completedCount,
           totalCount
         };
-      }, [transactions]);
+      }, [transactions, monthKey]);
 
       const handleSheetSync = async (type = 'EXPORT') => {
         if (!sheetUrl) {
@@ -235,7 +270,13 @@
 
       const updateAmount = (id, newAmount) => {
         const val = Number(newAmount) || 0;
-        setTransactions(prev => prev.map(t => t.id === id ? { ...t, actualAmount: val } : t));
+        setTransactions(prev => prev.map(t => {
+          if (t.id === id) {
+            const updatedHistory = { ...(t.history || {}), [monthKey]: val };
+            return { ...t, actualAmount: val, history: updatedHistory };
+          }
+          return t;
+        }));
       };
 
       // 항목 삭제 확정 로직
@@ -246,6 +287,15 @@
           showToast('항목이 삭제되었습니다.');
         }
       };
+
+      // 3개월 누적 비교용 동적 계산 (3M tabs)
+      const m3 = { y: currentYear, m: currentMonth };
+      const m2 = currentMonth > 1 ? { y: currentYear, m: currentMonth - 1 } : { y: currentYear - 1, m: 12 };
+      const m1 = m2.m > 1 ? { y: m2.y, m: m2.m - 1 } : { y: m2.y - 1, m: 12 };
+
+      const m1Key = `${m1.y}-${String(m1.m).padStart(2, '0')}`;
+      const m2Key = `${m2.y}-${String(m2.m).padStart(2, '0')}`;
+      const m3Key = `${m3.y}-${String(m3.m).padStart(2, '0')}`;
 
       return (
         <div className="max-w-md mx-auto min-h-screen bg-slate-50 flex flex-col pb-20 border-x border-slate-200 shadow-xl relative">
@@ -283,7 +333,7 @@
             {/* Payday Banner */}
             <div className="mt-3 bg-slate-800/80 backdrop-blur rounded-xl p-3 border border-slate-700/60 flex justify-between items-center text-xs">
               <div>
-                <span className="text-slate-400">이번 달 급여 예정일: </span>
+                <span className="text-slate-400">급여 예정일: </span>
                 <span className="font-semibold text-indigo-300">
                   {adjustedPayday.getFullYear()}년 {adjustedPayday.getMonth() + 1}월 {adjustedPayday.getDate()}일
                   {adjustedPayday.getDate() !== 25 && <span className="text-amber-400 ml-1">(휴일 조기지급)</span>}
@@ -296,6 +346,40 @@
           </header>
 
           <main className="p-4 space-y-4 flex-1">
+            {/* MONTH SELECTOR BAR (과거/미래 달 이동 단추) */}
+            <div className="flex items-center justify-between bg-white p-2.5 rounded-2xl border border-slate-200 shadow-sm">
+              <button 
+                onClick={handlePrevMonth}
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-all active:scale-95"
+                title="이전 달"
+              >
+                <i className="fa-solid fa-chevron-left text-xs"></i>
+              </button>
+
+              <div className="flex items-center space-x-2">
+                <i className="fa-regular fa-calendar-days text-indigo-600 text-sm"></i>
+                <span className="font-black text-slate-800 text-base tracking-tight">
+                  {currentYear}년 {currentMonth}월
+                </span>
+                {(currentYear !== 2026 || currentMonth !== 9) && (
+                  <button 
+                    onClick={handleCurrentMonth}
+                    className="text-[10px] bg-indigo-50 text-indigo-600 font-bold px-2 py-0.5 rounded-full border border-indigo-100 hover:bg-indigo-100 transition-colors"
+                  >
+                    오늘 달로
+                  </button>
+                )}
+              </div>
+
+              <button 
+                onClick={handleNextMonth}
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-all active:scale-95"
+                title="다음 달"
+              >
+                <i className="fa-solid fa-chevron-right text-xs"></i>
+              </button>
+            </div>
+
             {/* HERO CARD: 이달의 자유 운용 재원 (Soft & Refined Premium Style) */}
             <div className="bg-gradient-to-br from-indigo-50/90 via-slate-50 to-blue-50/80 border border-indigo-100/90 rounded-2xl p-5 shadow-sm relative overflow-hidden">
               <div className="absolute top-0 right-0 w-36 h-36 bg-indigo-500/5 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none"></div>
@@ -313,7 +397,7 @@
                 </button>
               </div>
 
-              <h2 className="text-xs font-semibold text-slate-500 mt-2 mb-0.5">이달의 자유 운용 재원</h2>
+              <h2 className="text-xs font-semibold text-slate-500 mt-2 mb-0.5">{currentMonth}월의 자유 운용 재원</h2>
               <div className="text-3xl font-black text-slate-900 tracking-tight mb-4">
                 {financialSummary.safeToSpend.toLocaleString()} <span className="text-base font-medium text-slate-600">원</span>
               </div>
@@ -442,64 +526,67 @@
                       if (filterCategory === 'INCOME') return t.type === 'INCOME';
                       return true;
                     })
-                    .map(tx => (
-                      <div 
-                        key={tx.id} 
-                        className={`bg-white rounded-xl p-3 border transition-all shadow-sm ${
-                          tx.isCompleted ? 'border-emerald-200 bg-emerald-50/20' : 'border-slate-200'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          {/* Left: Info */}
-                          <div className="flex items-center space-x-3">
-                            <button 
-                              onClick={() => toggleComplete(tx.id)}
-                              className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all ${
-                                tx.isCompleted ? 'bg-emerald-500 text-white shadow-sm' : 'border-2 border-slate-300 text-transparent hover:border-indigo-400'
-                              }`}
-                            >
-                              <i className="fa-solid fa-check text-xs"></i>
-                            </button>
+                    .map(tx => {
+                      const currentAmount = getTxAmount(tx);
+                      return (
+                        <div 
+                          key={tx.id} 
+                          className={`bg-white rounded-xl p-3 border transition-all shadow-sm ${
+                            tx.isCompleted ? 'border-emerald-200 bg-emerald-50/20' : 'border-slate-200'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            {/* Left: Info */}
+                            <div className="flex items-center space-x-3">
+                              <button 
+                                onClick={() => toggleComplete(tx.id)}
+                                className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all ${
+                                  tx.isCompleted ? 'bg-emerald-500 text-white shadow-sm' : 'border-2 border-slate-300 text-transparent hover:border-indigo-400'
+                                }`}
+                              >
+                                <i className="fa-solid fa-check text-xs"></i>
+                              </button>
 
-                            <div>
-                              <div className="flex items-center space-x-1.5">
-                                <span className="font-bold text-slate-800 text-sm">{tx.title}</span>
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                                  tx.type === 'INCOME' ? 'bg-emerald-100 text-emerald-700' : tx.isFixed ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'
-                                }`}>
-                                  {tx.category}
-                                </span>
-                              </div>
-                              <div className="text-[11px] text-slate-500 flex items-center space-x-2 mt-0.5">
-                                <span><i className="fa-regular fa-building-columns text-[10px] mr-1"></i>{tx.targetAccount}</span>
-                                <span>•</span>
-                                <span>{tx.dueDay}일 출금예정</span>
+                              <div>
+                                <div className="flex items-center space-x-1.5">
+                                  <span className="font-bold text-slate-800 text-sm">{tx.title}</span>
+                                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                                    tx.type === 'INCOME' ? 'bg-emerald-100 text-emerald-700' : tx.isFixed ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'
+                                  }`}>
+                                    {tx.category}
+                                  </span>
+                                </div>
+                                <div className="text-[11px] text-slate-500 flex items-center space-x-2 mt-0.5">
+                                  <span><i className="fa-regular fa-building-columns text-[10px] mr-1"></i>{tx.targetAccount}</span>
+                                  <span>•</span>
+                                  <span>{tx.dueDay}일 출금예정</span>
+                                </div>
                               </div>
                             </div>
-                          </div>
 
-                          {/* Right: Amount & Actions */}
-                          <div className="flex items-center space-x-2">
-                            <div className="text-right">
-                              <input 
-                                type="number"
-                                value={tx.actualAmount}
-                                onChange={(e) => updateAmount(tx.id, e.target.value)}
-                                className="w-24 text-right font-extrabold text-sm text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                              />
-                              <div className="text-[10px] text-slate-400">원</div>
+                            {/* Right: Amount & Actions */}
+                            <div className="flex items-center space-x-2">
+                              <div className="text-right">
+                                <input 
+                                  type="number"
+                                  value={currentAmount}
+                                  onChange={(e) => updateAmount(tx.id, e.target.value)}
+                                  className="w-24 text-right font-extrabold text-sm text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                />
+                                <div className="text-[10px] text-slate-400">원 ({currentMonth}월)</div>
+                              </div>
+                              <button 
+                                onClick={() => setDeleteConfirmId(tx.id)}
+                                className="text-slate-300 hover:text-rose-500 p-1.5 transition-colors"
+                                title="항목 삭제"
+                              >
+                                <i className="fa-solid fa-trash-can text-xs"></i>
+                              </button>
                             </div>
-                            <button 
-                              onClick={() => setDeleteConfirmId(tx.id)}
-                              className="text-slate-300 hover:text-rose-500 p-1.5 transition-colors"
-                              title="항목 삭제"
-                            >
-                              <i className="fa-solid fa-trash-can text-xs"></i>
-                            </button>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                 </div>
               </div>
             )}
@@ -516,9 +603,9 @@
                   {/* Grid Header */}
                   <div className="grid grid-cols-12 font-bold text-slate-400 text-[11px] px-2 py-1 bg-slate-50 rounded-lg text-center">
                     <span className="col-span-5 text-left">항목명</span>
-                    <span className="col-span-2">7월</span>
-                    <span className="col-span-2">8월</span>
-                    <span className="col-span-3 text-right">9월 (현재)</span>
+                    <span className="col-span-2">{m1.m}월</span>
+                    <span className="col-span-2">{m2.m}월</span>
+                    <span className="col-span-3 text-right">{m3.m}월 (현재)</span>
                   </div>
 
                   {/* Items */}
@@ -527,9 +614,9 @@
                     .map(item => (
                       <div key={item.id} className="grid grid-cols-12 items-center px-2 py-2 border-b border-slate-100 text-center font-medium">
                         <span className="col-span-5 text-left font-bold text-slate-800 truncate">{item.title}</span>
-                        <span className="col-span-2 text-slate-400 text-[11px]">{(item.history?.['2026-07'] || item.actualAmount).toLocaleString()}</span>
-                        <span className="col-span-2 text-slate-400 text-[11px]">{(item.history?.['2026-08'] || item.actualAmount).toLocaleString()}</span>
-                        <span className="col-span-3 text-right font-extrabold text-indigo-600">{item.actualAmount.toLocaleString()}원</span>
+                        <span className="col-span-2 text-slate-400 text-[11px]">{(item.history?.[m1Key] || item.actualAmount).toLocaleString()}</span>
+                        <span className="col-span-2 text-slate-400 text-[11px]">{(item.history?.[m2Key] || item.actualAmount).toLocaleString()}</span>
+                        <span className="col-span-3 text-right font-extrabold text-indigo-600">{(item.history?.[m3Key] || item.actualAmount).toLocaleString()}원</span>
                       </div>
                     ))}
 
@@ -537,10 +624,10 @@
                   <div className="grid grid-cols-12 items-center px-2 py-2.5 bg-indigo-50/60 rounded-xl font-bold text-indigo-900 mt-2">
                     <span className="col-span-5 text-left">고정비 월 합계</span>
                     <span className="col-span-2 text-center text-[11px] text-indigo-400">
-                      {transactions.filter(t => t.type === 'EXPENSE' && t.isFixed).reduce((sum, t) => sum + (t.history?.['2026-07'] || t.actualAmount), 0).toLocaleString()}
+                      {transactions.filter(t => t.type === 'EXPENSE' && t.isFixed).reduce((sum, t) => sum + (t.history?.[m1Key] || t.actualAmount), 0).toLocaleString()}
                     </span>
                     <span className="col-span-2 text-center text-[11px] text-indigo-400">
-                      {transactions.filter(t => t.type === 'EXPENSE' && t.isFixed).reduce((sum, t) => sum + (t.history?.['2026-08'] || t.actualAmount), 0).toLocaleString()}
+                      {transactions.filter(t => t.type === 'EXPENSE' && t.isFixed).reduce((sum, t) => sum + (t.history?.[m2Key] || t.actualAmount), 0).toLocaleString()}
                     </span>
                     <span className="col-span-3 text-right text-sm font-black text-indigo-600">
                       {financialSummary.fixedExpense.toLocaleString()}원
@@ -562,9 +649,9 @@
                   {/* Grid Header */}
                   <div className="grid grid-cols-12 font-bold text-slate-400 text-[11px] px-2 py-1 bg-slate-50 rounded-lg text-center">
                     <span className="col-span-5 text-left">항목명</span>
-                    <span className="col-span-2">7월</span>
-                    <span className="col-span-2">8월</span>
-                    <span className="col-span-3 text-right">9월 (현재)</span>
+                    <span className="col-span-2">{m1.m}월</span>
+                    <span className="col-span-2">{m2.m}월</span>
+                    <span className="col-span-3 text-right">{m3.m}월 (현재)</span>
                   </div>
 
                   {/* Items */}
@@ -573,9 +660,9 @@
                     .map(item => (
                       <div key={item.id} className="grid grid-cols-12 items-center px-2 py-2 border-b border-slate-100 text-center font-medium">
                         <span className="col-span-5 text-left font-bold text-slate-800 truncate">{item.title}</span>
-                        <span className="col-span-2 text-slate-400 text-[11px]">{(item.history?.['2026-07'] || item.actualAmount).toLocaleString()}</span>
-                        <span className="col-span-2 text-slate-400 text-[11px]">{(item.history?.['2026-08'] || item.actualAmount).toLocaleString()}</span>
-                        <span className="col-span-3 text-right font-extrabold text-amber-600">{item.actualAmount.toLocaleString()}원</span>
+                        <span className="col-span-2 text-slate-400 text-[11px]">{(item.history?.[m1Key] || item.actualAmount).toLocaleString()}</span>
+                        <span className="col-span-2 text-slate-400 text-[11px]">{(item.history?.[m2Key] || item.actualAmount).toLocaleString()}</span>
+                        <span className="col-span-3 text-right font-extrabold text-amber-600">{(item.history?.[m3Key] || item.actualAmount).toLocaleString()}원</span>
                       </div>
                     ))}
 
@@ -583,10 +670,10 @@
                   <div className="grid grid-cols-12 items-center px-2 py-2.5 bg-amber-50/60 rounded-xl font-bold text-amber-900 mt-2">
                     <span className="col-span-5 text-left">변동비 월 합계</span>
                     <span className="col-span-2 text-center text-[11px] text-amber-600/70">
-                      {transactions.filter(t => t.type === 'EXPENSE' && !t.isFixed).reduce((sum, t) => sum + (t.history?.['2026-07'] || t.actualAmount), 0).toLocaleString()}
+                      {transactions.filter(t => t.type === 'EXPENSE' && !t.isFixed).reduce((sum, t) => sum + (t.history?.[m1Key] || t.actualAmount), 0).toLocaleString()}
                     </span>
                     <span className="col-span-2 text-center text-[11px] text-amber-600/70">
-                      {transactions.filter(t => t.type === 'EXPENSE' && !t.isFixed).reduce((sum, t) => sum + (t.history?.['2026-08'] || t.actualAmount), 0).toLocaleString()}
+                      {transactions.filter(t => t.type === 'EXPENSE' && !t.isFixed).reduce((sum, t) => sum + (t.history?.[m2Key] || t.actualAmount), 0).toLocaleString()}
                     </span>
                     <span className="col-span-3 text-right text-sm font-black text-amber-600">
                       {financialSummary.variableExpense.toLocaleString()}원
@@ -611,7 +698,7 @@
 
                 {accounts.map(acc => {
                   const accItems = transactions.filter(t => t.targetAccount === acc.name);
-                  const monthlyTotal = accItems.reduce((sum, t) => sum + Number(t.actualAmount), 0);
+                  const monthlyTotal = accItems.reduce((sum, t) => sum + getTxAmount(t), 0);
 
                   // 1) 올해 실적 누적액 (2026년 1월~현재 실제 기록 기준 합산)
                   const ytdAccumulated = accItems.reduce((accSum, t) => {
@@ -623,14 +710,13 @@
                         }
                       });
                     }
-                    // 현재 달 미기록 시 이체완료 상태이면 추가
                     if (!t.history?.[`${currentYear}-${String(currentMonth).padStart(2, '0')}`] && t.isCompleted) {
-                      historySum += Number(t.actualAmount) || 0;
+                      historySum += getTxAmount(t);
                     }
                     return accSum + historySum;
                   }, 0);
 
-                  // 2) 지속 전체 누적액 (최초 이체 시작일 이후 기산 누적 총액)
+                  // 2) 지속 전체 누적액 (최초 이체 시작일 2024년 1월 1일 이후 기산 누적 총액)
                   const pastBase = acc.basePastAccumulated || 3000000;
                   const lifetimeAccumulated = pastBase + ytdAccumulated;
 
@@ -648,20 +734,18 @@
                             <span className="font-extrabold text-slate-800 text-sm">{acc.name}</span>
                           </div>
                           <div className="text-[10px] text-slate-400 mt-0.5">{acc.note}</div>
-                          {acc.startDate && (
-                            <div className="text-[9px] text-indigo-600 bg-indigo-50 font-semibold px-1.5 py-0.5 rounded inline-block mt-1">
-                              이체 기산일: {acc.startDate}~
-                            </div>
-                          )}
+                          <div className="text-[9px] text-indigo-600 bg-indigo-50 font-semibold px-1.5 py-0.5 rounded inline-block mt-1">
+                            이체 기산일: 2024-01-01~
+                          </div>
                         </div>
 
                         <div className="text-right">
                           <div className="text-xs font-black text-indigo-600">{monthlyTotal.toLocaleString()} 원</div>
-                          <div className="text-[10px] text-slate-400">이번 달 이체 필요액</div>
+                          <div className="text-[10px] text-slate-400">{currentMonth}월 이체 필요액</div>
                         </div>
                       </div>
 
-                      {/* 2개의 실적 누적 차트 영역 (요청사항 반영) */}
+                      {/* 2개의 실적 누적 차트 영역 */}
                       <div className="bg-slate-50/90 rounded-xl p-3 border border-slate-100 space-y-2.5">
                         {/* 차트 1: 올해 실적 누적액 (Current Year Accumulation) */}
                         <div>
@@ -687,7 +771,7 @@
                           <div className="flex justify-between items-center text-[11px] mb-1">
                             <span className="font-bold text-slate-700 flex items-center space-x-1">
                               <i className="fa-solid fa-vault text-emerald-600 text-[10px]"></i>
-                              <span>지속 전체 누적액 (기산일 이후)</span>
+                              <span>지속 전체 누적액 (2024.01.01 기산)</span>
                             </span>
                             <span className="font-black text-emerald-700 text-xs">
                               {lifetimeAccumulated.toLocaleString()} <span className="font-normal text-[9px] text-slate-500">원</span>
@@ -717,7 +801,7 @@
                               </button>
                               <span className={item.isCompleted ? 'line-through text-slate-400' : 'text-slate-700 font-semibold'}>{item.title}</span>
                             </div>
-                            <span className="font-bold text-slate-800">{Number(item.actualAmount).toLocaleString()}원</span>
+                            <span className="font-bold text-slate-800">{getTxAmount(item).toLocaleString()}원</span>
                           </div>
                         ))}
                       </div>
@@ -747,6 +831,7 @@
               onClose={() => setShowRoutineModal(false)} 
               safeToSpend={financialSummary.safeToSpend}
               overtimeIncome={financialSummary.overtimeIncome}
+              currentMonth={currentMonth}
             />
           )}
 
@@ -813,7 +898,7 @@
     }
 
     // 3-Minute Payday Routine Wizard Component
-    function RoutineWizard({ transactions, setTransactions, onClose, safeToSpend, overtimeIncome }) {
+    function RoutineWizard({ transactions, setTransactions, onClose, safeToSpend, overtimeIncome, currentMonth }) {
       const [step, setStep] = useState(1);
       
       const incomeItems = transactions.filter(t => t.type === 'INCOME');
@@ -829,7 +914,7 @@
           <div className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <div>
-                <span className="text-[10px] font-bold uppercase text-indigo-600 tracking-wider">PAYDAY ROUTINE Step {step}/3</span>
+                <span className="text-[10px] font-bold uppercase text-indigo-600 tracking-wider">PAYDAY ROUTINE Step {step}/3 ({currentMonth}월)</span>
                 <h3 className="font-extrabold text-slate-800 text-base">
                   {step === 1 && '1단계: 이번 달 수입 확정'}
                   {step === 2 && '2단계: 필수 변동 고지서 입력'}
@@ -923,7 +1008,7 @@
                 </div>
 
                 <div>
-                  <h4 className="text-xs text-slate-500">이번 달 차감 후 확정된</h4>
+                  <h4 className="text-xs text-slate-500">{currentMonth}월 차감 후 확정된</h4>
                   <div className="text-2xl font-extrabold text-indigo-900 mt-0.5">
                     이달의 자유 운용 재원
                   </div>
@@ -967,7 +1052,7 @@
           id: 'acc_' + Date.now(),
           name,
           note,
-          startDate,
+          startDate: '2024-01-01',
           basePastAccumulated: 0,
           color: 'bg-purple-500'
         };
@@ -995,7 +1080,7 @@
                 <div key={a.id} className="flex justify-between items-center p-2.5 bg-slate-50 rounded-xl text-xs">
                   <div>
                     <div className="font-bold text-slate-800">{a.name}</div>
-                    <div className="text-[10px] text-slate-400">{a.note} ({a.startDate || '2024-01-01'} 기산)</div>
+                    <div className="text-[10px] text-slate-400">{a.note} (2024-01-01 기산)</div>
                   </div>
                   <button onClick={() => deleteAcc(a.id)} className="text-rose-400 hover:text-rose-600 p-1">
                     <i className="fa-solid fa-trash"></i>
@@ -1019,15 +1104,6 @@
                 onChange={(e) => setNote(e.target.value)}
                 className="w-full text-xs p-2.5 border rounded-xl"
               />
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500">이체 시작 기산일</label>
-                <input 
-                  type="date" 
-                  value={startDate} 
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full text-xs p-2.5 border rounded-xl"
-                />
-              </div>
               <button 
                 onClick={addAccount}
                 className="w-full bg-indigo-600 text-white font-bold text-xs py-2.5 rounded-xl"
