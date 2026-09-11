@@ -1,1 +1,1152 @@
 
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#111827">
+<title>먼저 빼놓기</title>
+
+<style>
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Apple SD Gothic Neo",
+    "Noto Sans KR",
+    sans-serif;
+  background: #f5f6f8;
+  color: #111827;
+  line-height: 1.5;
+}
+
+button {
+  font: inherit;
+  border: 0;
+  cursor: pointer;
+}
+
+.app {
+  max-width: 480px;
+  min-height: 100vh;
+  margin: 0 auto;
+  background: #f5f6f8;
+  padding-bottom: 90px;
+}
+
+/* HEADER */
+
+.header {
+  padding: 24px 20px 16px;
+  background: #fff;
+}
+
+.header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.logo {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.7px;
+}
+
+.logo span {
+  color: #2563eb;
+}
+
+.settings-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #f3f4f6;
+  font-size: 18px;
+}
+
+/* CYCLE */
+
+.cycle {
+  padding: 14px 20px;
+  background: #fff;
+  border-top: 1px solid #f0f0f0;
+}
+
+.cycle-label {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.cycle-date {
+  margin-top: 3px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* HERO */
+
+.hero {
+  margin: 16px;
+  padding: 28px 22px;
+  border-radius: 22px;
+  background: #111827;
+  color: white;
+}
+
+.hero-label {
+  font-size: 14px;
+  opacity: .75;
+}
+
+.hero-money {
+  margin-top: 8px;
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: -1.5px;
+}
+
+.hero-desc {
+  margin-top: 7px;
+  font-size: 13px;
+  opacity: .65;
+}
+
+/* SUMMARY */
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin: 0 16px 16px;
+}
+
+.summary-card {
+  background: white;
+  border-radius: 17px;
+  padding: 17px;
+}
+
+.summary-label {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.summary-value {
+  margin-top: 5px;
+  font-size: 19px;
+  font-weight: 750;
+}
+
+.summary-value.blue {
+  color: #2563eb;
+}
+
+/* SECTION */
+
+.section {
+  margin: 0 16px 16px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 750;
+}
+
+.section-more {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+/* SET ASIDE */
+
+.reserve-list {
+  background: white;
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.reserve-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px 17px;
+  border-bottom: 1px solid #f1f1f1;
+}
+
+.reserve-item:last-child {
+  border-bottom: 0;
+}
+
+.reserve-left {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.reserve-icon {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: #eef2ff;
+  font-size: 16px;
+}
+
+.reserve-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.reserve-type {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.reserve-money {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* PROGRESS */
+
+.progress-card {
+  background: white;
+  padding: 18px;
+  border-radius: 18px;
+}
+
+.progress-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.progress-label {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.progress-percent {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.progress-bar {
+  height: 9px;
+  margin-top: 12px;
+  border-radius: 10px;
+  background: #edf0f3;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: #2563eb;
+  border-radius: 10px;
+  transition: width .3s ease;
+}
+
+.progress-bottom {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 9px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+/* DAILY */
+
+.daily-card {
+  background: white;
+  border-radius: 18px;
+  padding: 19px;
+}
+
+.daily-title {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.daily-money {
+  margin-top: 5px;
+  font-size: 25px;
+  font-weight: 800;
+}
+
+/* BOTTOM */
+
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(480px, 100%);
+  height: 72px;
+  background: rgba(255,255,255,.96);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid #e5e7eb;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  z-index: 10;
+}
+
+.nav-btn {
+  background: transparent;
+  color: #9ca3af;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+}
+
+.nav-btn .icon {
+  font-size: 20px;
+}
+
+.nav-btn.active {
+  color: #2563eb;
+  font-weight: 700;
+}
+
+/* MODAL */
+
+.modal-bg {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 100;
+  align-items: flex-end;
+}
+
+.modal-bg.show {
+  display: flex;
+}
+
+.modal {
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  background: white;
+  border-radius: 24px 24px 0 0;
+  padding: 24px 20px 30px;
+}
+
+.modal-title {
+  font-size: 20px;
+  font-weight: 800;
+  margin-bottom: 20px;
+}
+
+.form-row {
+  margin-bottom: 17px;
+}
+
+.form-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 7px;
+}
+
+.form-input {
+  width: 100%;
+  height: 48px;
+  border: 1px solid #dfe3e8;
+  border-radius: 12px;
+  padding: 0 13px;
+  font-size: 16px;
+  outline: none;
+}
+
+.form-input:focus {
+  border-color: #2563eb;
+}
+
+.save-btn {
+  width: 100%;
+  height: 50px;
+  border-radius: 13px;
+  background: #111827;
+  color: white;
+  font-weight: 700;
+}
+
+.close-btn {
+  width: 100%;
+  height: 45px;
+  margin-top: 8px;
+  background: #f3f4f6;
+  border-radius: 13px;
+}
+
+/* TOAST */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 90px;
+  transform: translateX(-50%) translateY(15px);
+  background: #111827;
+  color: white;
+  padding: 10px 17px;
+  border-radius: 30px;
+  font-size: 13px;
+  opacity: 0;
+  pointer-events: none;
+  transition: .25s;
+  z-index: 200;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+</style>
+</head>
+
+<body>
+
+<div class="app">
+
+  <header class="header">
+    <div class="header-top">
+      <div class="logo">
+        먼저 <span>빼놓기</span>
+      </div>
+
+      <button class="settings-btn" onclick="openSettings()">
+        ⚙️
+      </button>
+    </div>
+  </header>
+
+  <div class="cycle">
+    <div class="cycle-label">이번 급여 사이클</div>
+    <div class="cycle-date" id="cycleText">
+      계산 중...
+    </div>
+  </div>
+
+  <main>
+
+    <section class="hero">
+      <div class="hero-label">지금 써도 되는 돈</div>
+
+      <div class="hero-money" id="availableMoney">
+        0원
+      </div>
+
+      <div class="hero-desc">
+        빼놓을 돈을 먼저 제외한 실제 자유지출 가능 금액
+      </div>
+    </section>
+
+    <section class="summary">
+
+      <div class="summary-card">
+        <div class="summary-label">이번 달 수입</div>
+        <div class="summary-value" id="income">
+          0원
+        </div>
+      </div>
+
+      <div class="summary-card">
+        <div class="summary-label">먼저 빼놓기</div>
+        <div class="summary-value" id="reserve">
+          0원
+        </div>
+      </div>
+
+      <div class="summary-card">
+        <div class="summary-label">자유지출 사용</div>
+        <div class="summary-value" id="used">
+          0원
+        </div>
+      </div>
+
+      <div class="summary-card">
+        <div class="summary-label">남은 자유지출</div>
+        <div class="summary-value blue" id="remaining">
+          0원
+        </div>
+      </div>
+
+    </section>
+
+    <section class="section">
+
+      <div class="section-header">
+        <div class="section-title">먼저 빼놓을 돈</div>
+        <div class="section-more">이번 달</div>
+      </div>
+
+      <div class="reserve-list" id="reserveList"></div>
+
+    </section>
+
+    <section class="section">
+
+      <div class="section-header">
+        <div class="section-title">자유지출 사용률</div>
+      </div>
+
+      <div class="progress-card">
+
+        <div class="progress-top">
+          <div class="progress-label">
+            사용한 자유지출
+          </div>
+
+          <div class="progress-percent" id="progressPercent">
+            0%
+          </div>
+        </div>
+
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+
+        <div class="progress-bottom">
+          <span id="progressUsed">0원</span>
+          <span id="progressTotal">0원</span>
+        </div>
+
+      </div>
+
+    </section>
+
+    <section class="section">
+
+      <div class="section-header">
+        <div class="section-title">오늘의 권장 지출</div>
+      </div>
+
+      <div class="daily-card">
+
+        <div class="daily-title">
+          다음 급여일까지 하루 평균
+        </div>
+
+        <div class="daily-money" id="dailyMoney">
+          0원
+        </div>
+
+      </div>
+
+    </section>
+
+  </main>
+
+</div>
+
+
+<nav class="bottom-nav">
+
+  <button class="nav-btn active" onclick="showToast('오늘 화면입니다')">
+    <div class="icon">🏠</div>
+    오늘
+  </button>
+
+  <button class="nav-btn" onclick="showToast('수입 관리 화면은 다음 단계에서 추가합니다')">
+    <div class="icon">＋</div>
+    수입
+  </button>
+
+  <button class="nav-btn" onclick="showToast('지출 관리 화면은 다음 단계에서 추가합니다')">
+    <div class="icon">−</div>
+    지출
+  </button>
+
+  <button class="nav-btn" onclick="showToast('예상 화면은 다음 단계에서 추가합니다')">
+    <div class="icon">📊</div>
+    예상
+  </button>
+
+</nav>
+
+
+<!-- SETTINGS -->
+
+<div class="modal-bg" id="modalBg">
+
+  <div class="modal">
+
+    <div class="modal-title">
+      설정
+    </div>
+
+    <div class="form-row">
+
+      <label class="form-label">
+        급여일
+      </label>
+
+      <input
+        id="salaryDay"
+        class="form-input"
+        type="number"
+        min="1"
+        max="31"
+        value="25"
+      >
+
+    </div>
+
+    <button
+      class="save-btn"
+      onclick="saveSettings()"
+    >
+      저장
+    </button>
+
+    <button
+      class="close-btn"
+      onclick="closeSettings()"
+    >
+      닫기
+    </button>
+
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+
+<script>
+
+/* =========================
+   기본 데이터
+========================= */
+
+const defaultData = {
+
+  salaryDay: 25,
+
+  income: [
+    {
+      name: "급여",
+      amount: 4500000
+    },
+    {
+      name: "월세",
+      amount: 911000
+    },
+    {
+      name: "초과근무",
+      amount: 120000
+    }
+  ],
+
+  reserves: [
+    {
+      name: "보험",
+      type: "고정지출",
+      amount: 300000,
+      icon: "🛡️"
+    },
+    {
+      name: "관리비",
+      type: "필수지출",
+      amount: 250000,
+      icon: "🏠"
+    },
+    {
+      name: "가스",
+      type: "필수지출",
+      amount: 100000,
+      icon: "🔥"
+    },
+    {
+      name: "통신비",
+      type: "고정지출",
+      amount: 55000,
+      icon: "📱"
+    },
+    {
+      name: "저축·투자",
+      type: "저축/투자",
+      amount: 1000000,
+      icon: "💰"
+    }
+  ],
+
+  freeUsed: 620000
+
+};
+
+
+/* =========================
+   데이터 불러오기
+========================= */
+
+let data;
+
+try {
+
+  const saved =
+    localStorage.getItem("firstSetAsideData");
+
+  data = saved
+    ? JSON.parse(saved)
+    : defaultData;
+
+} catch(e) {
+
+  data = defaultData;
+
+}
+
+
+/* =========================
+   저장
+========================= */
+
+function saveData() {
+
+  localStorage.setItem(
+    "firstSetAsideData",
+    JSON.stringify(data)
+  );
+
+}
+
+
+/* =========================
+   숫자 포맷
+========================= */
+
+function money(value) {
+
+  return Math.round(value)
+    .toLocaleString("ko-KR") + "원";
+
+}
+
+
+/* =========================
+   급여일 계산
+========================= */
+
+function getSalaryDate(year, month, day) {
+
+  let d =
+    new Date(year, month, day);
+
+  /*
+   * 토요일 / 일요일이면
+   * 직전 금요일
+   */
+
+  while (
+    d.getDay() === 0 ||
+    d.getDay() === 6
+  ) {
+
+    d.setDate(d.getDate() - 1);
+
+  }
+
+  return d;
+
+}
+
+
+/* =========================
+   다음 급여일
+========================= */
+
+function getNextSalaryDate() {
+
+  const now = new Date();
+
+  let year = now.getFullYear();
+  let month = now.getMonth();
+
+  let salary =
+    getSalaryDate(
+      year,
+      month,
+      data.salaryDay
+    );
+
+  if (salary <= now) {
+
+    month++;
+
+    if (month > 11) {
+      month = 0;
+      year++;
+    }
+
+    salary =
+      getSalaryDate(
+        year,
+        month,
+        data.salaryDay
+      );
+
+  }
+
+  return salary;
+
+}
+
+
+/* =========================
+   화면 계산
+========================= */
+
+function render() {
+
+  const income =
+    data.income.reduce(
+      (sum, item) =>
+        sum + Number(item.amount),
+      0
+    );
+
+  const reserve =
+    data.reserves.reduce(
+      (sum, item) =>
+        sum + Number(item.amount),
+      0
+    );
+
+  const used =
+    Number(data.freeUsed);
+
+  const freeTotal =
+    income - reserve;
+
+  const remaining =
+    Math.max(
+      freeTotal - used,
+      0
+    );
+
+  /*
+   * 실제 남은 날짜 계산
+   */
+
+  const now = new Date();
+
+  const nextSalary =
+    getNextSalaryDate();
+
+  const diff =
+    nextSalary.getTime() -
+    now.getTime();
+
+  const days =
+    Math.max(
+      Math.ceil(
+        diff /
+        (1000 * 60 * 60 * 24)
+      ),
+      1
+    );
+
+  const daily =
+    remaining / days;
+
+
+  /*
+   * 화면 출력
+   */
+
+  document.getElementById(
+    "availableMoney"
+  ).textContent =
+    money(remaining);
+
+
+  document.getElementById(
+    "income"
+  ).textContent =
+    money(income);
+
+
+  document.getElementById(
+    "reserve"
+  ).textContent =
+    money(reserve);
+
+
+  document.getElementById(
+    "used"
+  ).textContent =
+    money(used);
+
+
+  document.getElementById(
+    "remaining"
+  ).textContent =
+    money(remaining);
+
+
+  document.getElementById(
+    "progressUsed"
+  ).textContent =
+    money(used);
+
+
+  document.getElementById(
+    "progressTotal"
+  ).textContent =
+    money(freeTotal);
+
+
+  let percent = 0;
+
+  if (freeTotal > 0) {
+
+    percent =
+      Math.min(
+        used / freeTotal * 100,
+        100
+      );
+
+  }
+
+  document.getElementById(
+    "progressPercent"
+  ).textContent =
+    Math.round(percent) + "%";
+
+
+  document.getElementById(
+    "progressFill"
+  ).style.width =
+    percent + "%";
+
+
+  document.getElementById(
+    "dailyMoney"
+  ).textContent =
+    money(daily);
+
+
+  /*
+   * 급여 사이클 표시
+   */
+
+  const salary =
+    getNextSalaryDate();
+
+  const salaryText =
+    salary.toLocaleDateString(
+      "ko-KR",
+      {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        weekday: "short"
+      }
+    );
+
+  document.getElementById(
+    "cycleText"
+  ).textContent =
+    "다음 급여일 · " +
+    salaryText;
+
+
+  /*
+   * 빼놓기 목록
+   */
+
+  const list =
+    document.getElementById(
+      "reserveList"
+    );
+
+  list.innerHTML = "";
+
+  data.reserves.forEach(
+    item => {
+
+      const div =
+        document.createElement("div");
+
+      div.className =
+        "reserve-item";
+
+      div.innerHTML = `
+
+        <div class="reserve-left">
+
+          <div class="reserve-icon">
+            ${item.icon}
+          </div>
+
+          <div>
+
+            <div class="reserve-name">
+              ${item.name}
+            </div>
+
+            <div class="reserve-type">
+              ${item.type}
+            </div>
+
+          </div>
+
+        </div>
+
+        <div class="reserve-money">
+          ${money(item.amount)}
+        </div>
+
+      `;
+
+      list.appendChild(div);
+
+    }
+  );
+
+}
+
+
+/* =========================
+   설정 열기
+========================= */
+
+function openSettings() {
+
+  document.getElementById(
+    "salaryDay"
+  ).value =
+    data.salaryDay;
+
+  document.getElementById(
+    "modalBg"
+  ).classList.add("show");
+
+}
+
+
+/* =========================
+   설정 닫기
+========================= */
+
+function closeSettings() {
+
+  document.getElementById(
+    "modalBg"
+  ).classList.remove("show");
+
+}
+
+
+/* =========================
+   설정 저장
+========================= */
+
+function saveSettings() {
+
+  let day =
+    Number(
+      document.getElementById(
+        "salaryDay"
+      ).value
+    );
+
+  if (
+    !day ||
+    day < 1 ||
+    day > 31
+  ) {
+
+    showToast(
+      "급여일은 1~31일로 입력해주세요."
+    );
+
+    return;
+
+  }
+
+  data.salaryDay = day;
+
+  saveData();
+
+  closeSettings();
+
+  render();
+
+  showToast(
+    "급여일이 저장되었습니다."
+  );
+
+}
+
+
+/* =========================
+   토스트
+========================= */
+
+let toastTimer;
+
+function showToast(message) {
+
+  const toast =
+    document.getElementById(
+      "toast"
+    );
+
+  toast.textContent =
+    message;
+
+  toast.classList.add(
+    "show"
+  );
+
+  clearTimeout(
+    toastTimer
+  );
+
+  toastTimer =
+    setTimeout(
+      () => {
+
+        toast.classList.remove(
+          "show"
+        );
+
+      },
+      2200
+    );
+
+}
+
+
+/* =========================
+   시작
+========================= */
+
+render();
+
+</script>
+
+</body>
+</html>
