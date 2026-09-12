@@ -45,14 +45,14 @@
 
     // 💡 [깃허브 배포용 설정] 아래 따옴표 안에 작성하신 Google Apps Script Web App URL을 붙여넣으시면
     // 앱 시작 시 자동 데이터 로드 및 내용 변경 시 실시간 자동 백업이 상시 작동합니다.
-    const DEFAULT_SHEET_URL = "https://script.google.com/macros/s/AKfycbycIVEh0BeZiGXT2dRAjDEg3wZgxs5tYVItC7PQW2mThCiYdW4fimhZMUfmNCywUrOg/exec"; 
+    const DEFAULT_SHEET_URL = ""; 
 
     // 초기 샘플 통장 데이터
     const DEFAULT_ACCOUNTS = [
       { id: 'acc_1', name: '공과금 통장', color: 'bg-emerald-500', note: '관리비, 가스비, 주유비', isAccumulating: false },
       { id: 'acc_2', name: '고정비 통장', color: 'bg-indigo-500', note: '보험료, 대출이자, 구독료', isAccumulating: false },
       { id: 'acc_3', name: '카드대금 통장', color: 'bg-amber-500', note: '생활비 신용카드 결제', isAccumulating: false },
-      { id: 'acc_4', name: '초과근무/자산 통장', color: 'bg-blue-600', note: '청약, 수당, 자산 형성', isAccumulating: true, startDate: '2026-01-01' },
+      { id: 'acc_4', name: '초과근무/자산 통장', color: 'bg-blue-600', note: '초과근무재원, 수당, 자산 형성', isAccumulating: true, startDate: '2026-01-01' },
       { id: 'acc_5', name: '연금저축/투자비 통장', color: 'bg-purple-600', note: '연금저축, 주식, 자율투자', isAccumulating: true, startDate: '2024-01-01' },
     ];
 
@@ -158,19 +158,64 @@
 
       const monthKey = useMemo(() => `${currentYear}-${String(currentMonth).padStart(2, '0')}`, [currentYear, currentMonth]);
 
-      const getTxAmount = (t) => {
-        if (t.history && t.history[monthKey] !== undefined) {
-          return Number(t.history[monthKey]) || 0;
+      const getTxAmountForMonth = (t, ym) => {
+        if (t.history && t.history[ym] !== undefined) {
+          return Number(t.history[ym]) || 0;
         }
         return Number(t.actualAmount) || Number(t.estimatedAmount) || 0;
       };
+
+      const getTxAmount = (t) => getTxAmountForMonth(t, monthKey);
 
       const showToast = (msg) => {
         setToastMessage(msg);
         setTimeout(() => setToastMessage(null), 3500);
       };
 
-      // 구글 시트 연동 로직 (CORS 프리플라이트 대응 & 자동 상시 백업)
+      // 특정 연월(ym)의 수입, 지출, 초과근무재원을 산출하는 헬퍼 함수
+      const getMonthFinancials = (ym) => {
+        const totalInc = transactions
+          .filter(t => t.type === 'INCOME')
+          .reduce((sum, t) => sum + getTxAmountForMonth(t, ym), 0);
+
+        const rentalInc = transactions
+          .filter(t => t.type === 'INCOME' && (t.category === '월세' || t.title.includes('월세') || t.title.includes('임대')))
+          .reduce((sum, t) => sum + getTxAmountForMonth(t, ym), 0);
+
+        const baseInc = transactions
+          .filter(t => t.type === 'INCOME' && !(t.category === '월세' || t.title.includes('월세') || t.title.includes('임대')))
+          .reduce((sum, t) => sum + getTxAmountForMonth(t, ym), 0);
+
+        const fixedExp = transactions
+          .filter(t => t.type === 'EXPENSE' && t.isFixed)
+          .reduce((sum, t) => sum + getTxAmountForMonth(t, ym), 0);
+
+        const varExp = transactions
+          .filter(t => t.type === 'EXPENSE' && !t.isFixed)
+          .reduce((sum, t) => sum + getTxAmountForMonth(t, ym), 0);
+
+        const invTotal = transactions
+          .filter(t => t.type === 'INVESTMENT')
+          .reduce((sum, t) => sum + getTxAmountForMonth(t, ym), 0);
+
+        const essential = fixedExp + varExp + invTotal;
+        const overtime = baseInc - essential;
+        const safe = totalInc - essential;
+
+        return {
+          totalIncome: totalInc,
+          baseIncome: baseInc,
+          rentalIncome: rentalInc,
+          fixedExpense: fixedExp,
+          variableExpense: varExp,
+          investmentTotal: invTotal,
+          totalEssential: essential,
+          overtimeIncome: overtime,
+          safeToSpend: safe
+        };
+      };
+
+      // 구글 시트 연동 로직
       const handleSheetSync = async (type = 'EXPORT', quiet = false) => {
         if (!sheetUrl) {
           if (!quiet) {
@@ -210,14 +255,12 @@
         }
       };
 
-      // 앱 시작 시 구글 시트 URL이 구성되어 있으면 자동 가져오기 실행
       useEffect(() => {
         if (sheetUrl && sheetUrl.startsWith('http')) {
           handleSheetSync('IMPORT', true);
         }
       }, []);
 
-      // 데이터 변경 시 로컬저장소 저장 & 구글 시트 디바운스 자동 백업
       useEffect(() => {
         localStorage.setItem('payday_transactions_v7', JSON.stringify(transactions));
         localStorage.setItem('payday_accounts_v7', JSON.stringify(accounts));
@@ -245,56 +288,15 @@
       const dDay = Math.ceil(timeDiff / (1000 * 3600 * 24));
 
       // 💡 [정밀 계산 로직]
-      // 1. 월세 임대 수입: 입력된 '월세/임대' 항목의 선택 월 금액을 동적 반영
-      // 2. 기본 급여 수입: 월세를 제외한 순수 기본 급여 및 기타 수입 금액
-      // 3. 초과근무재원 = (기본 급여 수입 - 필수 선출금 전체)
-      // 4. 이달의 자유 운용 재원 = 총 수입 - 필수 선출금 = 초과근무재원 + 월세임대수입
+      // 1. 초과근무재원 = (기본 급여 수입 - 필수 선출금 전체(고정+변동+투자))
+      // 2. 이달의 자유 운용 재원 = 총 수입(급여+월세) - 필수 선출금 = 초과근무재원 + 월세임대수입
       const financialSummary = useMemo(() => {
-        const totalIncome = transactions
-          .filter(t => t.type === 'INCOME')
-          .reduce((sum, t) => sum + getTxAmount(t), 0);
-
-        const rentalIncome = transactions
-          .filter(t => t.type === 'INCOME' && (t.category === '월세' || t.title.includes('월세') || t.title.includes('임대')))
-          .reduce((sum, t) => sum + getTxAmount(t), 0);
-
-        const baseIncome = transactions
-          .filter(t => t.type === 'INCOME' && !(t.category === '월세' || t.title.includes('월세') || t.title.includes('임대')))
-          .reduce((sum, t) => sum + getTxAmount(t), 0);
-
-        const fixedExpense = transactions
-          .filter(t => t.type === 'EXPENSE' && t.isFixed)
-          .reduce((sum, t) => sum + getTxAmount(t), 0);
-
-        const variableExpense = transactions
-          .filter(t => t.type === 'EXPENSE' && !t.isFixed)
-          .reduce((sum, t) => sum + getTxAmount(t), 0);
-
-        const investmentTotal = transactions
-          .filter(t => t.type === 'INVESTMENT')
-          .reduce((sum, t) => sum + getTxAmount(t), 0);
-
-        const totalEssential = fixedExpense + variableExpense + investmentTotal;
-        
-        // 정교해진 산식:
-        // 초과근무재원 = 기본 급여 수입 - 필수 선출금(고정지출+변동지출+투자)
-        const overtimeIncome = baseIncome - totalEssential;
-        // 자유 운용 재원 = 총 수입 - 필수 선출금
-        const safeToSpend = totalIncome - totalEssential;
-
+        const curFin = getMonthFinancials(monthKey);
         const completedCount = transactions.filter(t => t.isCompleted).length;
         const totalCount = transactions.length;
 
         return {
-          totalIncome,
-          baseIncome,
-          rentalIncome,
-          fixedExpense,
-          variableExpense,
-          investmentTotal,
-          totalEssential,
-          overtimeIncome,
-          safeToSpend,
+          ...curFin,
           completedCount,
           totalCount
         };
@@ -770,35 +772,43 @@
 
                   let ytdAccumulated = 0;
                   let lifetimeAccumulated = 0;
-                  
+
+                  // 💡 [개선된 초과근무재원 자동 누적 집계 로직]
+                  // 초과근무/자산 통장의 경우 해당 월의 (기본급 - 필수선출금) 초과근무재원 실적을 자동 합산
+                  const isOvertimeAccount = acc.name.includes('초과근무') || acc.id === 'acc_4';
+
                   if (acc.isAccumulating && acc.startDate) {
                     const startYear = parseInt(acc.startDate.substring(0, 4)) || 2024;
                     const startMonth = parseInt(acc.startDate.substring(5, 7)) || 1;
 
+                    // 1) 올해(currentYear) 1월부터 currentMonth까지 누적
                     for (let m = 1; m <= currentMonth; m++) {
                       const ym = `${currentYear}-${String(m).padStart(2, '0')}`;
-                      accItems.forEach(t => {
-                        if (t.history && t.history[ym] !== undefined) {
-                          ytdAccumulated += Number(t.history[ym]) || 0;
-                        } else {
-                          ytdAccumulated += Number(t.actualAmount) || Number(t.estimatedAmount) || 0;
-                        }
-                      });
+                      if (isOvertimeAccount) {
+                        const mFin = getMonthFinancials(ym);
+                        ytdAccumulated += mFin.overtimeIncome;
+                      } else {
+                        accItems.forEach(t => {
+                          ytdAccumulated += getTxAmountForMonth(t, ym);
+                        });
+                      }
                     }
 
+                    // 2) 기산일(startYear.startMonth)부터 currentYear.currentMonth까지 지속 누적
                     for (let y = startYear; y <= currentYear; y++) {
                       const mStart = (y === startYear) ? startMonth : 1;
                       const mEnd = (y === currentYear) ? currentMonth : 12;
 
                       for (let m = mStart; m <= mEnd; m++) {
                         const ym = `${y}-${String(m).padStart(2, '0')}`;
-                        accItems.forEach(t => {
-                          if (t.history && t.history[ym] !== undefined) {
-                            lifetimeAccumulated += Number(t.history[ym]) || 0;
-                          } else {
-                            lifetimeAccumulated += Number(t.actualAmount) || Number(t.estimatedAmount) || 0;
-                          }
-                        });
+                        if (isOvertimeAccount) {
+                          const mFin = getMonthFinancials(ym);
+                          lifetimeAccumulated += mFin.overtimeIncome;
+                        } else {
+                          accItems.forEach(t => {
+                            lifetimeAccumulated += getTxAmountForMonth(t, ym);
+                          });
+                        }
                       }
                     }
                   }
@@ -817,7 +827,7 @@
                           <div className="text-[10px] text-slate-400 mt-0.5">{acc.note}</div>
                           {acc.isAccumulating ? (
                             <div className="text-[9px] text-indigo-600 bg-indigo-50 font-semibold px-1.5 py-0.5 rounded inline-block mt-1">
-                              기산일: {acc.startDate}부터 누적 추적
+                              기산일: {acc.startDate}부터 누적 추적 {isOvertimeAccount && '⚡ (초과근무재원 자동집계)'}
                             </div>
                           ) : (
                             <div className="text-[9px] text-slate-500 bg-slate-100 font-medium px-1.5 py-0.5 rounded inline-block mt-1">
@@ -827,8 +837,12 @@
                         </div>
 
                         <div className="text-right">
-                          <div className="text-xs font-black text-indigo-600">{monthlyTotal.toLocaleString()} 원</div>
-                          <div className="text-[10px] text-slate-400">{currentMonth}월 이체 필요액</div>
+                          <div className="text-xs font-black text-indigo-600">
+                            {isOvertimeAccount ? financialSummary.overtimeIncome.toLocaleString() : monthlyTotal.toLocaleString()} 원
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            {isOvertimeAccount ? `${currentMonth}월 초과근무재원` : `${currentMonth}월 이체 필요액`}
+                          </div>
                         </div>
                       </div>
 
