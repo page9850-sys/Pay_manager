@@ -45,7 +45,7 @@
 
     // 💡 [깃허브 배포용 설정] 아래 따옴표 안에 작성하신 Google Apps Script Web App URL을 붙여넣으시면
     // 앱 시작 시 자동 데이터 로드 및 내용 변경 시 실시간 자동 백업이 상시 작동합니다.
-    const DEFAULT_SHEET_URL = "https://script.google.com/macros/s/AKfycbycIVEh0BeZiGXT2dRAjDEg3wZgxs5tYVItC7PQW2mThCiYdW4fimhZMUfmNCywUrOg/exec"; 
+    const DEFAULT_SHEET_URL = ""; 
 
     // 초기 샘플 통장 데이터
     const DEFAULT_ACCOUNTS = [
@@ -244,17 +244,22 @@
       const timeDiff = adjustedPayday.getTime() - today.getTime();
       const dDay = Math.ceil(timeDiff / (1000 * 3600 * 24));
 
+      // 💡 [정밀 계산 로직]
+      // 1. 월세 임대 수입: 입력된 '월세/임대' 항목의 선택 월 금액을 동적 반영
+      // 2. 기본 급여 수입: 월세를 제외한 순수 기본 급여 및 기타 수입 금액
+      // 3. 초과근무재원 = (기본 급여 수입 - 필수 선출금 전체)
+      // 4. 이달의 자유 운용 재원 = 총 수입 - 필수 선출금 = 초과근무재원 + 월세임대수입
       const financialSummary = useMemo(() => {
         const totalIncome = transactions
           .filter(t => t.type === 'INCOME')
           .reduce((sum, t) => sum + getTxAmount(t), 0);
 
-        const baseIncome = transactions
-          .filter(t => t.type === 'INCOME' && (t.category === '급여' || t.title.includes('급여') || t.title.includes('기본급')))
-          .reduce((sum, t) => sum + getTxAmount(t), 0);
-
         const rentalIncome = transactions
           .filter(t => t.type === 'INCOME' && (t.category === '월세' || t.title.includes('월세') || t.title.includes('임대')))
+          .reduce((sum, t) => sum + getTxAmount(t), 0);
+
+        const baseIncome = transactions
+          .filter(t => t.type === 'INCOME' && !(t.category === '월세' || t.title.includes('월세') || t.title.includes('임대')))
           .reduce((sum, t) => sum + getTxAmount(t), 0);
 
         const fixedExpense = transactions
@@ -271,8 +276,10 @@
 
         const totalEssential = fixedExpense + variableExpense + investmentTotal;
         
-        // 산식: (급여수익 - 필수선출금)
+        // 정교해진 산식:
+        // 초과근무재원 = 기본 급여 수입 - 필수 선출금(고정지출+변동지출+투자)
         const overtimeIncome = baseIncome - totalEssential;
+        // 자유 운용 재원 = 총 수입 - 필수 선출금
         const safeToSpend = totalIncome - totalEssential;
 
         const completedCount = transactions.filter(t => t.isCompleted).length;
@@ -1105,7 +1112,7 @@
                     <span className="font-bold">{overtimeIncome.toLocaleString()}원</span>
                   </div>
                   <div className="text-[10px] text-indigo-600">
-                    * 산식: (급여수익 - 필수선출금(지출+투자))
+                    * 산식: (급여수익 - 필수선출금(고정+변동+투자))
                   </div>
                 </div>
 
