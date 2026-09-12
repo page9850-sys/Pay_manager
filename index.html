@@ -28,7 +28,6 @@
       background-color: #f8fafc;
       -webkit-tap-highlight-color: transparent;
     }
-    /* Hide scrollbar for clean horizontal scrolling */
     .no-scrollbar::-webkit-scrollbar {
       display: none;
     }
@@ -44,36 +43,43 @@
   <script type="text/babel">
     const { useState, useEffect, useMemo, useRef } = React;
 
-    // 초기 샘플 데이터 (기산일 및 과거 누적 기적 적용)
+    // 💡 [깃허브 배포용 설정] 아래 따옴표 안에 작성하신 Google Apps Script Web App URL을 붙여넣으시면
+    // 앱 시작 시 자동 데이터 로드 및 내용 변경 시 실시간 자동 백업이 상시 작동합니다.
+    const DEFAULT_SHEET_URL = ""; 
+
+    // 초기 샘플 통장 데이터
     const DEFAULT_ACCOUNTS = [
-      { id: 'acc_1', name: '공과금 통장', color: 'bg-emerald-500', note: '관리비, 가스비, 주유비', startDate: '2024-01-01', basePastAccumulated: 4200000 },
-      { id: 'acc_2', name: '고정비 통장', color: 'bg-indigo-500', note: '보험료, 대출이자, 구독료', startDate: '2024-01-01', basePastAccumulated: 7800000 },
-      { id: 'acc_3', name: '카드대금 통장', color: 'bg-amber-500', note: '생활비 신용카드 결제', startDate: '2024-01-01', basePastAccumulated: 9500000 },
-      { id: 'acc_4', name: '자산/저축 통장', color: 'bg-blue-500', note: '청약, 적금, 자유투자', startDate: '2024-01-01', basePastAccumulated: 18500000 },
+      { id: 'acc_1', name: '공과금 통장', color: 'bg-emerald-500', note: '관리비, 가스비, 주유비', isAccumulating: false },
+      { id: 'acc_2', name: '고정비 통장', color: 'bg-indigo-500', note: '보험료, 대출이자, 구독료', isAccumulating: false },
+      { id: 'acc_3', name: '카드대금 통장', color: 'bg-amber-500', note: '생활비 신용카드 결제', isAccumulating: false },
+      { id: 'acc_4', name: '초과근무/자산 통장', color: 'bg-blue-600', note: '청약, 수당, 자산 형성', isAccumulating: true, startDate: '2026-01-01' },
+      { id: 'acc_5', name: '연금저축/투자비 통장', color: 'bg-purple-600', note: '연금저축, 주식, 자율투자', isAccumulating: true, startDate: '2024-01-01' },
     ];
 
     const DEFAULT_TRANSACTIONS = [
       // 수입 (INCOME)
-      { id: 'tx_1', type: 'INCOME', isFixed: true, category: '급여', title: '기본 급여 수입', estimatedAmount: 3200000, actualAmount: 3200000, targetAccount: '자산/저축 통장', dueDay: 25, isCompleted: true },
-      { id: 'tx_2', type: 'INCOME', isFixed: false, category: '월세', title: '월세 임대 수입', estimatedAmount: 500000, actualAmount: 500000, targetAccount: '자산/저축 통장', dueDay: 20, isCompleted: true },
+      { id: 'tx_1', type: 'INCOME', isFixed: true, category: '급여', title: '기본 급여 수입', estimatedAmount: 6516000, actualAmount: 6516000, targetAccount: '초과근무/자산 통장', isCompleted: true },
+      { id: 'tx_2', type: 'INCOME', isFixed: false, category: '월세', title: '월세 임대 수입', estimatedAmount: 911000, actualAmount: 911000, targetAccount: '초과근무/자산 통장', isCompleted: false },
       
+      // 투자 (INVESTMENT)
+      { id: 'tx_inv1', type: 'INVESTMENT', isFixed: true, category: '연금', title: '개인연금저축 펀드', estimatedAmount: 300000, actualAmount: 300000, targetAccount: '연금저축/투자비 통장', isCompleted: true, history: { '2026-01': 300000, '2026-02': 300000, '2026-03': 300000, '2026-04': 300000, '2026-05': 300000, '2026-06': 300000, '2026-07': 300000, '2026-08': 300000, '2026-09': 300000 } },
+      { id: 'tx_inv2', type: 'INVESTMENT', isFixed: true, category: '저축', title: '주택청약 종합저축', estimatedAmount: 100000, actualAmount: 100000, targetAccount: '초과근무/자산 통장', isCompleted: false, history: { '2026-01': 100000, '2026-02': 100000, '2026-03': 100000, '2026-04': 100000, '2026-05': 100000, '2026-06': 100000, '2026-07': 100000, '2026-08': 100000, '2026-09': 100000 } },
+      { id: 'tx_inv3', type: 'INVESTMENT', isFixed: false, category: '투자', title: '미국 ETF 적립식 투자', estimatedAmount: 200000, actualAmount: 200000, targetAccount: '연금저축/투자비 통장', isCompleted: false, history: { '2026-01': 200000, '2026-02': 200000, '2026-03': 200000, '2026-04': 200000, '2026-05': 200000, '2026-06': 200000, '2026-07': 200000, '2026-08': 200000, '2026-09': 200000 } },
+
       // 고정 지출 (EXPENSE - FIXED)
-      { id: 'tx_3', type: 'EXPENSE', isFixed: true, category: '보험료', title: '실손/건강 보험료', estimatedAmount: 180000, actualAmount: 180000, targetAccount: '고정비 통장', dueDay: 25, isCompleted: true, history: { '2026-01': 180000, '2026-02': 180000, '2026-03': 180000, '2026-04': 180000, '2026-05': 180000, '2026-06': 180000, '2026-07': 180000, '2026-08': 180000, '2026-09': 180000 } },
-      { id: 'tx_4', type: 'EXPENSE', isFixed: true, category: '대출이자', title: '주택담보대출 이자', estimatedAmount: 420000, actualAmount: 420000, targetAccount: '고정비 통장', dueDay: 25, isCompleted: true, history: { '2026-01': 420000, '2026-02': 420000, '2026-03': 420000, '2026-04': 420000, '2026-05': 420000, '2026-06': 420000, '2026-07': 420000, '2026-08': 420000, '2026-09': 420000 } },
-      { id: 'tx_5', type: 'EXPENSE', isFixed: true, category: '저축', title: '주택청약 종합저축', estimatedAmount: 100000, actualAmount: 100000, targetAccount: '자산/저축 통장', dueDay: 25, isCompleted: false, history: { '2026-01': 100000, '2026-02': 100000, '2026-03': 100000, '2026-04': 100000, '2026-05': 100000, '2026-06': 100000, '2026-07': 100000, '2026-08': 100000, '2026-09': 100000 } },
-      { id: 'tx_6', type: 'EXPENSE', isFixed: true, category: '구독료', title: 'OTT 및 통신 구독료', estimatedAmount: 45000, actualAmount: 45000, targetAccount: '고정비 통장', dueDay: 28, isCompleted: false, history: { '2026-01': 45000, '2026-02': 45000, '2026-03': 45000, '2026-04': 45000, '2026-05': 45000, '2026-06': 45000, '2026-07': 45000, '2026-08': 45000, '2026-09': 45000 } },
+      { id: 'tx_3', type: 'EXPENSE', isFixed: true, category: '보험료', title: '실손/건강 보험료', estimatedAmount: 180000, actualAmount: 180000, targetAccount: '고정비 통장', isCompleted: false, history: { '2026-01': 180000, '2026-02': 180000, '2026-03': 180000, '2026-04': 180000, '2026-05': 180000, '2026-06': 180000, '2026-07': 180000, '2026-08': 180000, '2026-09': 180000 } },
+      { id: 'tx_4', type: 'EXPENSE', isFixed: true, category: '대출이자', title: '주택담보대출 이자', estimatedAmount: 420000, actualAmount: 420000, targetAccount: '고정비 통장', isCompleted: false, history: { '2026-01': 420000, '2026-02': 420000, '2026-03': 420000, '2026-04': 420000, '2026-05': 420000, '2026-06': 420000, '2026-07': 420000, '2026-08': 420000, '2026-09': 420000 } },
+      { id: 'tx_6', type: 'EXPENSE', isFixed: true, category: '구독료', title: 'OTT 및 통신 구독료', estimatedAmount: 45000, actualAmount: 45000, targetAccount: '고정비 통장', isCompleted: false, history: { '2026-01': 45000, '2026-02': 45000, '2026-03': 45000, '2026-04': 45000, '2026-05': 45000, '2026-06': 45000, '2026-07': 45000, '2026-08': 45000, '2026-09': 45000 } },
       
       // 변동 지출 (EXPENSE - VARIABLE)
-      { id: 'tx_7', type: 'EXPENSE', isFixed: false, category: '관리비', title: '아파트 관리비', estimatedAmount: 190000, actualAmount: 215000, targetAccount: '공과금 통장', dueDay: 25, isCompleted: true, history: { '2026-01': 210000, '2026-02': 225000, '2026-03': 195000, '2026-04': 195000, '2026-05': 180000, '2026-06': 182000, '2026-07': 185000, '2026-08': 240000, '2026-09': 215000 } },
-      { id: 'tx_8', type: 'EXPENSE', isFixed: false, category: '가스비', title: '도시가스 난방비', estimatedAmount: 35000, actualAmount: 28000, targetAccount: '공과금 통장', dueDay: 25, isCompleted: true, history: { '2026-01': 85000, '2026-02': 92000, '2026-03': 65000, '2026-04': 65000, '2026-05': 32000, '2026-06': 21000, '2026-07': 18000, '2026-08': 16000, '2026-09': 28000 } },
-      { id: 'tx_9', type: 'EXPENSE', isFixed: false, category: '주유비', title: '차량 주유비', estimatedAmount: 150000, actualAmount: 160000, targetAccount: '공과금 통장', dueDay: 25, isCompleted: false, history: { '2026-01': 140000, '2026-02': 150000, '2026-03': 150000, '2026-04': 150000, '2026-05': 145000, '2026-06': 160000, '2026-07': 140000, '2026-08': 150000, '2026-09': 160000 } },
-      { id: 'tx_10', type: 'EXPENSE', isFixed: false, category: '카드대금', title: '생활비 신용카드 대금', estimatedAmount: 800000, actualAmount: 850000, targetAccount: '카드대금 통장', dueDay: 25, isCompleted: false, history: { '2026-01': 750000, '2026-02': 790000, '2026-03': 810000, '2026-04': 800000, '2026-05': 820000, '2026-06': 790000, '2026-07': 780000, '2026-08': 820000, '2026-09': 850000 } },
+      { id: 'tx_7', type: 'EXPENSE', isFixed: false, category: '관리비', title: '아파트 관리비', estimatedAmount: 190000, actualAmount: 215000, targetAccount: '공과금 통장', isCompleted: false, history: { '2026-01': 210000, '2026-02': 225000, '2026-03': 195000, '2026-04': 195000, '2026-05': 180000, '2026-06': 182000, '2026-07': 185000, '2026-08': 240000, '2026-09': 215000 } },
+      { id: 'tx_8', type: 'EXPENSE', isFixed: false, category: '가스비', title: '도시가스 난방비', estimatedAmount: 35000, actualAmount: 28000, targetAccount: '공과금 통장', isCompleted: false, history: { '2026-01': 85000, '2026-02': 92000, '2026-03': 65000, '2026-04': 65000, '2026-05': 32000, '2026-06': 21000, '2026-07': 18000, '2026-08': 16000, '2026-09': 28000 } },
+      { id: 'tx_9', type: 'EXPENSE', isFixed: false, category: '주유비', title: '차량 주유비', estimatedAmount: 150000, actualAmount: 160000, targetAccount: '공과금 통장', isCompleted: false, history: { '2026-01': 140000, '2026-02': 150000, '2026-03': 150000, '2026-04': 150000, '2026-05': 145000, '2026-06': 160000, '2026-07': 140000, '2026-08': 150000, '2026-09': 160000 } },
+      { id: 'tx_10', type: 'EXPENSE', isFixed: false, category: '카드대금', title: '생활비 신용카드 대금', estimatedAmount: 800000, actualAmount: 850000, targetAccount: '카드대금 통장', isCompleted: false, history: { '2026-01': 750000, '2026-02': 790000, '2026-03': 810000, '2026-04': 800000, '2026-05': 820000, '2026-06': 790000, '2026-07': 780000, '2026-08': 820000, '2026-09': 850000 } },
     ];
 
-    // 한국 공휴일 및 주말 고려 25일 급여일 계산 함수
     const calculateAdjustedPayday = (year, month) => {
       let targetDate = new Date(year, month - 1, 25);
-      
       const isHoliday = (d) => {
         const m = d.getMonth() + 1;
         const date = d.getDate();
@@ -83,7 +89,6 @@
         if (m === 5 && date === 5) return true;
         return false;
       };
-
       while (targetDate.getDay() === 0 || targetDate.getDay() === 6 || isHoliday(targetDate)) {
         targetDate.setDate(targetDate.getDate() - 1);
       }
@@ -91,26 +96,30 @@
     };
 
     function PaydayApp() {
-      // LocalStorage 기반 상태 관리
       const [transactions, setTransactions] = useState(() => {
-        const saved = localStorage.getItem('payday_transactions_v4');
+        const saved = localStorage.getItem('payday_transactions_v7');
         return saved ? JSON.parse(saved) : DEFAULT_TRANSACTIONS;
       });
 
       const [accounts, setAccounts] = useState(() => {
-        const saved = localStorage.getItem('payday_accounts_v4');
+        const saved = localStorage.getItem('payday_accounts_v7');
         return saved ? JSON.parse(saved) : DEFAULT_ACCOUNTS;
       });
 
-      const [sheetUrl, setSheetUrl] = useState(() => localStorage.getItem('payday_sheet_url') || '');
+      const [sheetUrl, setSheetUrl] = useState(() => {
+        const saved = localStorage.getItem('payday_sheet_url');
+        return saved || DEFAULT_SHEET_URL;
+      });
+
       const [isSyncing, setIsSyncing] = useState(false);
       const [syncStatus, setSyncStatus] = useState(sheetUrl ? 'connected' : 'local');
 
-      // UI 탭 제어
-      const [activeTab, setActiveTab] = useState('MAIN_LIST'); // MAIN_LIST, FIXED_3M, VAR_3M, ENVELOPES, TRENDS
-      const [filterCategory, setFilterCategory] = useState('ALL'); // ALL, FIXED, VARIABLE, INCOME
-      
-      // 모달 및 토스트 상태
+      // UI 탭 및 필터
+      const [activeTab, setActiveTab] = useState('MAIN_LIST');
+      const [filterCategory, setFilterCategory] = useState('ALL');
+      const [batchSelectedIds, setBatchSelectedIds] = useState([]);
+
+      // 모달 및 토스트
       const [showRoutineModal, setShowRoutineModal] = useState(false);
       const [showAccountModal, setShowAccountModal] = useState(false);
       const [showSheetModal, setShowSheetModal] = useState(false);
@@ -118,11 +127,12 @@
       const [deleteConfirmId, setDeleteConfirmId] = useState(null);
       const [toastMessage, setToastMessage] = useState(null);
 
-      // 현재 선택된 년/월 (기본: 2026년 9월)
+      // 선택 연월 (기본: 2026년 9월)
       const [currentYear, setCurrentYear] = useState(2026);
       const [currentMonth, setCurrentMonth] = useState(9);
 
-      // 월 이동 제어 함수
+      const isInitialMount = useRef(true);
+
       const handlePrevMonth = () => {
         if (currentMonth === 1) {
           setCurrentYear(prev => prev - 1);
@@ -146,10 +156,8 @@
         setCurrentMonth(9);
       };
 
-      // 현재 선택된 월의 키 포맷 (예: "2026-09")
       const monthKey = useMemo(() => `${currentYear}-${String(currentMonth).padStart(2, '0')}`, [currentYear, currentMonth]);
 
-      // 특정 항목의 선택된 월 기준 금액 읽기
       const getTxAmount = (t) => {
         if (t.history && t.history[monthKey] !== undefined) {
           return Number(t.history[monthKey]) || 0;
@@ -157,64 +165,116 @@
         return Number(t.actualAmount) || Number(t.estimatedAmount) || 0;
       };
 
-      // 토스트 메시지 출력 함수
       const showToast = (msg) => {
         setToastMessage(msg);
-        setTimeout(() => setToastMessage(null), 3000);
+        setTimeout(() => setToastMessage(null), 3500);
       };
 
-      // 동기화 저장
+      // 구글 시트 연동 로직 (CORS 프리플라이트 대응 & 자동 상시 백업)
+      const handleSheetSync = async (type = 'EXPORT', quiet = false) => {
+        if (!sheetUrl) {
+          if (!quiet) {
+            showToast('구글 시트 Web App URL을 등록해주세요.');
+            setShowSheetModal(true);
+          }
+          return;
+        }
+
+        if (!quiet) setIsSyncing(true);
+        try {
+          if (type === 'EXPORT') {
+            await fetch(sheetUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify({ transactions, accounts }),
+              redirect: 'follow',
+            });
+            if (!quiet) showToast('구글 시트에 성공적으로 동기화되었습니다!');
+          } else {
+            const response = await fetch(`${sheetUrl}?action=read`, { redirect: 'follow' });
+            const data = await response.json();
+            if (data.transactions && Array.isArray(data.transactions) && data.transactions.length > 0) {
+              setTransactions(data.transactions);
+            }
+            if (data.accounts && Array.isArray(data.accounts) && data.accounts.length > 0) {
+              setAccounts(data.accounts);
+            }
+            if (!quiet) showToast('구글 시트에서 최신 데이터를 불러왔습니다.');
+          }
+          setSyncStatus('connected');
+        } catch (err) {
+          console.error('Sheet Sync Error:', err);
+          if (!quiet) showToast('구글 시트 연동 오류! 배포 설정을 확인하세요.');
+        } finally {
+          if (!quiet) setIsSyncing(false);
+        }
+      };
+
+      // 앱 시작 시 구글 시트 URL이 구성되어 있으면 자동 가져오기 실행
       useEffect(() => {
-        localStorage.setItem('payday_transactions_v4', JSON.stringify(transactions));
-      }, [transactions]);
+        if (sheetUrl && sheetUrl.startsWith('http')) {
+          handleSheetSync('IMPORT', true);
+        }
+      }, []);
+
+      // 데이터 변경 시 로컬저장소 저장 & 구글 시트 디바운스 자동 백업
+      useEffect(() => {
+        localStorage.setItem('payday_transactions_v7', JSON.stringify(transactions));
+        localStorage.setItem('payday_accounts_v7', JSON.stringify(accounts));
+
+        if (!isInitialMount.current && sheetUrl && sheetUrl.startsWith('http')) {
+          const timer = setTimeout(() => {
+            handleSheetSync('EXPORT', true);
+          }, 2000);
+          return () => clearTimeout(timer);
+        } else {
+          isInitialMount.current = false;
+        }
+      }, [transactions, accounts]);
 
       useEffect(() => {
-        localStorage.setItem('payday_accounts_v4', JSON.stringify(accounts));
-      }, [accounts]);
+        if (sheetUrl) {
+          localStorage.setItem('payday_sheet_url', sheetUrl);
+          setSyncStatus('connected');
+        }
+      }, [sheetUrl]);
 
-      // 급여일 D-Day 산출
       const adjustedPayday = useMemo(() => calculateAdjustedPayday(currentYear, currentMonth), [currentYear, currentMonth]);
-      const today = new Date(2026, 8, 11); // 기준일 2026-09-11
+      const today = new Date(2026, 8, 11);
       const timeDiff = adjustedPayday.getTime() - today.getTime();
       const dDay = Math.ceil(timeDiff / (1000 * 3600 * 24));
 
-      // 메인 재원 연산식 (선택된 월 기준)
       const financialSummary = useMemo(() => {
-        // 총 수입 (급여 + 월세 등 전체)
         const totalIncome = transactions
           .filter(t => t.type === 'INCOME')
           .reduce((sum, t) => sum + getTxAmount(t), 0);
 
-        // 기본 급여 수입 (월세/임대 수입 제외)
         const baseIncome = transactions
           .filter(t => t.type === 'INCOME' && (t.category === '급여' || t.title.includes('급여') || t.title.includes('기본급')))
           .reduce((sum, t) => sum + getTxAmount(t), 0);
 
-        // 월세 수입 재원
         const rentalIncome = transactions
           .filter(t => t.type === 'INCOME' && (t.category === '월세' || t.title.includes('월세') || t.title.includes('임대')))
           .reduce((sum, t) => sum + getTxAmount(t), 0);
 
-        // 고정 지출 합계
         const fixedExpense = transactions
           .filter(t => t.type === 'EXPENSE' && t.isFixed)
           .reduce((sum, t) => sum + getTxAmount(t), 0);
 
-        // 변동 지출 합계
         const variableExpense = transactions
           .filter(t => t.type === 'EXPENSE' && !t.isFixed)
           .reduce((sum, t) => sum + getTxAmount(t), 0);
 
-        // 필수 선출금 (고정비 + 변동비)
-        const totalEssential = fixedExpense + variableExpense;
+        const investmentTotal = transactions
+          .filter(t => t.type === 'INVESTMENT')
+          .reduce((sum, t) => sum + getTxAmount(t), 0);
 
-        // 초과근무재원 = (급여수익 - 필수선출금)
+        const totalEssential = fixedExpense + variableExpense + investmentTotal;
+        
+        // 산식: (급여수익 - 필수선출금)
         const overtimeIncome = baseIncome - totalEssential;
-
-        // 자유 운용 재원 = (총 수입 - 필수 선출금)
         const safeToSpend = totalIncome - totalEssential;
 
-        // 이체 완결 현황
         const completedCount = transactions.filter(t => t.isCompleted).length;
         const totalCount = transactions.length;
 
@@ -224,6 +284,7 @@
           rentalIncome,
           fixedExpense,
           variableExpense,
+          investmentTotal,
           totalEssential,
           overtimeIncome,
           safeToSpend,
@@ -232,40 +293,14 @@
         };
       }, [transactions, monthKey]);
 
-      const handleSheetSync = async (type = 'EXPORT') => {
-        if (!sheetUrl) {
-          showToast('구글 시트 Web App URL을 먼저 등록해주세요.');
-          setShowSheetModal(true);
-          return;
-        }
-
-        setIsSyncing(true);
-        try {
-          if (type === 'EXPORT') {
-            await fetch(sheetUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ transactions, accounts }),
-            });
-            showToast('구글 시트에 성공적으로 동기화되었습니다!');
-          } else {
-            const response = await fetch(`${sheetUrl}?action=read`);
-            const data = await response.json();
-            if (data.transactions) setTransactions(data.transactions);
-            if (data.accounts) setAccounts(data.accounts);
-            showToast('구글 시트에서 최신 데이터를 불러왔습니다.');
-          }
-          setSyncStatus('connected');
-        } catch (err) {
-          console.error(err);
-          showToast('구글 시트 연동 중 오류가 발생했습니다.');
-        } finally {
-          setIsSyncing(false);
-        }
-      };
-
       const toggleComplete = (id) => {
         setTransactions(prev => prev.map(t => t.id === id ? { ...t, isCompleted: !t.isCompleted } : t));
+      };
+
+      const toggleBatchSelect = (id) => {
+        setBatchSelectedIds(prev => 
+          prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+        );
       };
 
       const updateAmount = (id, newAmount) => {
@@ -279,7 +314,6 @@
         }));
       };
 
-      // 항목 삭제 확정 로직
       const handleConfirmDelete = () => {
         if (deleteConfirmId) {
           setTransactions(prev => prev.filter(t => t.id !== deleteConfirmId));
@@ -288,7 +322,6 @@
         }
       };
 
-      // 3개월 누적 비교용 동적 계산 (3M tabs)
       const m3 = { y: currentYear, m: currentMonth };
       const m2 = currentMonth > 1 ? { y: currentYear, m: currentMonth - 1 } : { y: currentYear - 1, m: 12 };
       const m1 = m2.m > 1 ? { y: m2.y, m: m2.m - 1 } : { y: m2.y - 1, m: 12 };
@@ -297,9 +330,28 @@
       const m2Key = `${m2.y}-${String(m2.m).padStart(2, '0')}`;
       const m3Key = `${m3.y}-${String(m3.m).padStart(2, '0')}`;
 
+      const filteredTransactions = useMemo(() => {
+        return transactions.filter(t => {
+          if (filterCategory === 'FIXED') return t.type === 'EXPENSE' && t.isFixed;
+          if (filterCategory === 'VARIABLE') return t.type === 'EXPENSE' && !t.isFixed;
+          if (filterCategory === 'INVESTMENT') return t.type === 'INVESTMENT';
+          if (filterCategory === 'INCOME') return t.type === 'INCOME';
+          return true;
+        });
+      }, [transactions, filterCategory]);
+
+      const batchSelectedSum = useMemo(() => {
+        return filteredTransactions
+          .filter(t => batchSelectedIds.includes(t.id))
+          .reduce((sum, t) => sum + getTxAmount(t), 0);
+      }, [filteredTransactions, batchSelectedIds, monthKey]);
+
+      const batchSelectedCount = useMemo(() => {
+        return filteredTransactions.filter(t => batchSelectedIds.includes(t.id)).length;
+      }, [filteredTransactions, batchSelectedIds]);
+
       return (
         <div className="max-w-md mx-auto min-h-screen bg-slate-50 flex flex-col pb-20 border-x border-slate-200 shadow-xl relative">
-          {/* Toast Notification Banner */}
           {toastMessage && (
             <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 text-white text-xs px-4 py-2.5 rounded-full shadow-2xl backdrop-blur flex items-center space-x-2 animate-bounce">
               <i className="fa-solid fa-circle-info text-indigo-400"></i>
@@ -307,7 +359,6 @@
             </div>
           )}
 
-          {/* Header */}
           <header className="bg-slate-900 text-white p-4 sticky top-0 z-30 shadow-md">
             <div className="flex justify-between items-center">
               <div className="flex items-center space-x-2">
@@ -325,12 +376,11 @@
                   }`}
                 >
                   <i className={`fa-solid ${syncStatus === 'connected' ? 'fa-cloud-check text-emerald-400' : 'fa-cloud-arrow-up'}`}></i>
-                  <span>{syncStatus === 'connected' ? '시트연동중' : '시트연동'}</span>
+                  <span>{syncStatus === 'connected' ? '시트상시연동' : '시트연동'}</span>
                 </button>
               </div>
             </div>
 
-            {/* Payday Banner */}
             <div className="mt-3 bg-slate-800/80 backdrop-blur rounded-xl p-3 border border-slate-700/60 flex justify-between items-center text-xs">
               <div>
                 <span className="text-slate-400">급여 예정일: </span>
@@ -346,7 +396,7 @@
           </header>
 
           <main className="p-4 space-y-4 flex-1">
-            {/* MONTH SELECTOR BAR (과거/미래 달 이동 단추) */}
+            {/* 월별 선택 컨트롤 바 */}
             <div className="flex items-center justify-between bg-white p-2.5 rounded-2xl border border-slate-200 shadow-sm">
               <button 
                 onClick={handlePrevMonth}
@@ -380,7 +430,7 @@
               </button>
             </div>
 
-            {/* HERO CARD: 이달의 자유 운용 재원 (Soft & Refined Premium Style) */}
+            {/* 히어로 카드 */}
             <div className="bg-gradient-to-br from-indigo-50/90 via-slate-50 to-blue-50/80 border border-indigo-100/90 rounded-2xl p-5 shadow-sm relative overflow-hidden">
               <div className="absolute top-0 right-0 w-36 h-36 bg-indigo-500/5 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none"></div>
 
@@ -402,14 +452,12 @@
                 {financialSummary.safeToSpend.toLocaleString()} <span className="text-base font-medium text-slate-600">원</span>
               </div>
 
-              {/* Sub Financial Breakdown Box */}
               <div className="bg-white/80 rounded-xl p-3 backdrop-blur border border-slate-200/80 shadow-xs space-y-2">
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-600 font-medium">총 수입 (급여+월세)</span>
                   <span className="font-bold text-emerald-600">+{financialSummary.totalIncome.toLocaleString()} 원</span>
                 </div>
 
-                {/* Sub Badges for Overtime & Rental Income */}
                 <div className="grid grid-cols-2 gap-2 pt-1.5 border-t border-slate-100 text-[11px]">
                   <div className="bg-indigo-50/70 rounded-lg p-2 border border-indigo-100">
                     <div className="text-indigo-700 font-bold mb-0.5 flex items-center space-x-1">
@@ -430,12 +478,11 @@
                 </div>
 
                 <div className="flex justify-between text-xs pt-1 border-t border-slate-100">
-                  <span className="text-slate-600 font-medium">필수 선출금 (고정+변동)</span>
+                  <span className="text-slate-600 font-medium">필수 선출금 (지출+투자)</span>
                   <span className="font-bold text-rose-500">-{financialSummary.totalEssential.toLocaleString()} 원</span>
                 </div>
               </div>
 
-              {/* Progress Bar */}
               <div className="mt-3.5 pt-1">
                 <div className="flex justify-between text-[11px] text-slate-500 mb-1">
                   <span>선출금 이체 완결 현황</span>
@@ -450,7 +497,7 @@
               </div>
             </div>
 
-            {/* Navigation Tabs */}
+            {/* 메인 탭 */}
             <div className="flex space-x-1 bg-slate-200/80 p-1 rounded-xl text-xs font-semibold no-scrollbar overflow-x-auto">
               <button 
                 onClick={() => setActiveTab('MAIN_LIST')}
@@ -484,22 +531,25 @@
               </button>
             </div>
 
-            {/* TAB 1: MAIN LIST */}
+            {/* 전체 내역 탭 */}
             {activeTab === 'MAIN_LIST' && (
               <div className="space-y-3">
-                {/* Category Filter & Add button */}
                 <div className="flex justify-between items-center">
                   <div className="flex space-x-1 text-xs">
                     {[
                       { id: 'ALL', label: '전체' },
                       { id: 'FIXED', label: '고정비' },
                       { id: 'VARIABLE', label: '변동비' },
+                      { id: 'INVESTMENT', label: '투자' },
                       { id: 'INCOME', label: '수입' },
                     ].map(f => (
                       <button
                         key={f.id}
-                        onClick={() => setFilterCategory(f.id)}
-                        className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
+                        onClick={() => {
+                          setFilterCategory(f.id);
+                          setBatchSelectedIds([]);
+                        }}
+                        className={`px-2 py-1 rounded-md font-medium transition-colors ${
                           filterCategory === f.id ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 border border-slate-200'
                         }`}
                       >
@@ -517,27 +567,47 @@
                   </button>
                 </div>
 
-                {/* Mobile Friendly Card List */}
+                {(filterCategory === 'FIXED' || filterCategory === 'VARIABLE') && (
+                  <div className="bg-amber-500/10 border border-amber-300/80 rounded-xl p-3 flex justify-between items-center text-xs animate-fadeIn">
+                    <div className="flex items-center space-x-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+                      <span className="font-extrabold text-amber-900">
+                        {filterCategory === 'FIXED' ? '고정비' : '변동비'} 묶음 이체 선택 합계 ({batchSelectedCount}건)
+                      </span>
+                    </div>
+                    <div className="font-black text-amber-600 text-base tracking-tight">
+                      {batchSelectedSum.toLocaleString()} <span className="text-xs font-semibold text-amber-800">원</span>
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-2">
-                  {transactions
-                    .filter(t => {
-                      if (filterCategory === 'FIXED') return t.type === 'EXPENSE' && t.isFixed;
-                      if (filterCategory === 'VARIABLE') return t.type === 'EXPENSE' && !t.isFixed;
-                      if (filterCategory === 'INCOME') return t.type === 'INCOME';
-                      return true;
-                    })
-                    .map(tx => {
-                      const currentAmount = getTxAmount(tx);
-                      return (
-                        <div 
-                          key={tx.id} 
-                          className={`bg-white rounded-xl p-3 border transition-all shadow-sm ${
-                            tx.isCompleted ? 'border-emerald-200 bg-emerald-50/20' : 'border-slate-200'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            {/* Left: Info */}
-                            <div className="flex items-center space-x-3">
+                  {filteredTransactions.map(tx => {
+                    const currentAmount = getTxAmount(tx);
+                    const isBatchSelected = batchSelectedIds.includes(tx.id);
+                    const isBatchMode = (filterCategory === 'FIXED' || filterCategory === 'VARIABLE');
+
+                    return (
+                      <div 
+                        key={tx.id} 
+                        className={`bg-white rounded-xl p-3 border transition-all shadow-sm ${
+                          isBatchMode 
+                            ? (isBatchSelected ? 'border-amber-400 bg-amber-50/40' : 'border-slate-200')
+                            : (tx.isCompleted ? 'border-emerald-200 bg-emerald-50/20' : 'border-slate-200')
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            {isBatchMode ? (
+                              <button 
+                                onClick={() => toggleBatchSelect(tx.id)}
+                                className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all ${
+                                  isBatchSelected ? 'bg-amber-500 text-white shadow-sm ring-2 ring-amber-300' : 'border-2 border-slate-300 text-transparent hover:border-amber-400'
+                                }`}
+                              >
+                                <i className="fa-solid fa-check text-xs"></i>
+                              </button>
+                            ) : (
                               <button 
                                 onClick={() => toggleComplete(tx.id)}
                                 className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all ${
@@ -546,52 +616,49 @@
                               >
                                 <i className="fa-solid fa-check text-xs"></i>
                               </button>
+                            )}
 
-                              <div>
-                                <div className="flex items-center space-x-1.5">
-                                  <span className="font-bold text-slate-800 text-sm">{tx.title}</span>
-                                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                                    tx.type === 'INCOME' ? 'bg-emerald-100 text-emerald-700' : tx.isFixed ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'
-                                  }`}>
-                                    {tx.category}
-                                  </span>
-                                </div>
-                                <div className="text-[11px] text-slate-500 flex items-center space-x-2 mt-0.5">
-                                  <span><i className="fa-regular fa-building-columns text-[10px] mr-1"></i>{tx.targetAccount}</span>
-                                  <span>•</span>
-                                  <span>{tx.dueDay}일 출금예정</span>
-                                </div>
+                            <div>
+                              <div className="flex items-center space-x-1.5">
+                                <span className="font-bold text-slate-800 text-sm">{tx.title}</span>
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                                  tx.type === 'INCOME' ? 'bg-emerald-100 text-emerald-700' : tx.type === 'INVESTMENT' ? 'bg-purple-100 text-purple-700' : tx.isFixed ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'
+                                }`}>
+                                  {tx.category}
+                                </span>
                               </div>
-                            </div>
-
-                            {/* Right: Amount & Actions */}
-                            <div className="flex items-center space-x-2">
-                              <div className="text-right">
-                                <input 
-                                  type="number"
-                                  value={currentAmount}
-                                  onChange={(e) => updateAmount(tx.id, e.target.value)}
-                                  className="w-24 text-right font-extrabold text-sm text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                                />
-                                <div className="text-[10px] text-slate-400">원 ({currentMonth}월)</div>
+                              <div className="text-[11px] text-slate-500 flex items-center space-x-2 mt-0.5">
+                                <span><i className="fa-regular fa-building-columns text-[10px] mr-1"></i>{tx.targetAccount}</span>
                               </div>
-                              <button 
-                                onClick={() => setDeleteConfirmId(tx.id)}
-                                className="text-slate-300 hover:text-rose-500 p-1.5 transition-colors"
-                                title="항목 삭제"
-                              >
-                                <i className="fa-solid fa-trash-can text-xs"></i>
-                              </button>
                             </div>
                           </div>
+
+                          <div className="flex items-center space-x-2">
+                            <div className="text-right">
+                              <input 
+                                type="number"
+                                value={currentAmount}
+                                onChange={(e) => updateAmount(tx.id, e.target.value)}
+                                className="w-24 text-right font-extrabold text-sm text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                              />
+                              <div className="text-[10px] text-slate-400">원 ({currentMonth}월)</div>
+                            </div>
+                            <button 
+                              onClick={() => setDeleteConfirmId(tx.id)}
+                              className="text-slate-300 hover:text-rose-500 p-1.5 transition-colors"
+                            >
+                              <i className="fa-solid fa-trash-can text-xs"></i>
+                            </button>
+                          </div>
                         </div>
-                      );
-                    })}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
 
-            {/* TAB 2: FIXED 3M COMPARISON */}
+            {/* 고정비 3개월 탭 */}
             {activeTab === 'FIXED_3M' && (
               <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3">
                 <div className="flex justify-between items-center border-b pb-2">
@@ -600,36 +667,33 @@
                 </div>
 
                 <div className="space-y-2 text-xs">
-                  {/* Grid Header */}
-                  <div className="grid grid-cols-12 font-bold text-slate-400 text-[11px] px-2 py-1 bg-slate-50 rounded-lg text-center">
-                    <span className="col-span-5 text-left">항목명</span>
+                  <div className="grid grid-cols-12 font-bold text-slate-400 text-[10px] px-1 py-1.5 bg-slate-50 rounded-lg text-center">
+                    <span className="col-span-4 text-left pl-1">항목명</span>
                     <span className="col-span-2">{m1.m}월</span>
                     <span className="col-span-2">{m2.m}월</span>
-                    <span className="col-span-3 text-right">{m3.m}월 (현재)</span>
+                    <span className="col-span-4 text-right pr-1">{m3.m}월 (현재)</span>
                   </div>
 
-                  {/* Items */}
                   {transactions
                     .filter(t => t.type === 'EXPENSE' && t.isFixed)
                     .map(item => (
-                      <div key={item.id} className="grid grid-cols-12 items-center px-2 py-2 border-b border-slate-100 text-center font-medium">
-                        <span className="col-span-5 text-left font-bold text-slate-800 truncate">{item.title}</span>
-                        <span className="col-span-2 text-slate-400 text-[11px]">{(item.history?.[m1Key] || item.actualAmount).toLocaleString()}</span>
-                        <span className="col-span-2 text-slate-400 text-[11px]">{(item.history?.[m2Key] || item.actualAmount).toLocaleString()}</span>
-                        <span className="col-span-3 text-right font-extrabold text-indigo-600">{(item.history?.[m3Key] || item.actualAmount).toLocaleString()}원</span>
+                      <div key={item.id} className="grid grid-cols-12 items-center px-1 py-2 border-b border-slate-100 text-center font-medium">
+                        <span className="col-span-4 text-left pl-1 font-bold text-slate-800 truncate text-[11px]">{item.title}</span>
+                        <span className="col-span-2 text-slate-400 text-[10px] tracking-tight">{(item.history?.[m1Key] || item.actualAmount).toLocaleString()}</span>
+                        <span className="col-span-2 text-slate-400 text-[10px] tracking-tight">{(item.history?.[m2Key] || item.actualAmount).toLocaleString()}</span>
+                        <span className="col-span-4 text-right pr-1 font-extrabold text-indigo-600 text-[11px] tracking-tight">{(item.history?.[m3Key] || item.actualAmount).toLocaleString()}원</span>
                       </div>
                     ))}
 
-                  {/* Summary Footer */}
-                  <div className="grid grid-cols-12 items-center px-2 py-2.5 bg-indigo-50/60 rounded-xl font-bold text-indigo-900 mt-2">
-                    <span className="col-span-5 text-left">고정비 월 합계</span>
-                    <span className="col-span-2 text-center text-[11px] text-indigo-400">
+                  <div className="grid grid-cols-12 items-center px-1 py-2.5 bg-indigo-50/60 rounded-xl font-bold text-indigo-900 mt-2">
+                    <span className="col-span-4 text-left pl-1 text-[11px]">고정비 월 합계</span>
+                    <span className="col-span-2 text-center text-[10px] text-indigo-400 tracking-tight">
                       {transactions.filter(t => t.type === 'EXPENSE' && t.isFixed).reduce((sum, t) => sum + (t.history?.[m1Key] || t.actualAmount), 0).toLocaleString()}
                     </span>
-                    <span className="col-span-2 text-center text-[11px] text-indigo-400">
+                    <span className="col-span-2 text-center text-[10px] text-indigo-400 tracking-tight">
                       {transactions.filter(t => t.type === 'EXPENSE' && t.isFixed).reduce((sum, t) => sum + (t.history?.[m2Key] || t.actualAmount), 0).toLocaleString()}
                     </span>
-                    <span className="col-span-3 text-right text-sm font-black text-indigo-600">
+                    <span className="col-span-4 text-right pr-1 text-xs font-black text-indigo-600 tracking-tight">
                       {financialSummary.fixedExpense.toLocaleString()}원
                     </span>
                   </div>
@@ -637,7 +701,7 @@
               </div>
             )}
 
-            {/* TAB 3: VARIABLE 3M COMPARISON */}
+            {/* 변동비 3개월 탭 */}
             {activeTab === 'VAR_3M' && (
               <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3">
                 <div className="flex justify-between items-center border-b pb-2">
@@ -646,36 +710,33 @@
                 </div>
 
                 <div className="space-y-2 text-xs">
-                  {/* Grid Header */}
-                  <div className="grid grid-cols-12 font-bold text-slate-400 text-[11px] px-2 py-1 bg-slate-50 rounded-lg text-center">
-                    <span className="col-span-5 text-left">항목명</span>
+                  <div className="grid grid-cols-12 font-bold text-slate-400 text-[10px] px-1 py-1.5 bg-slate-50 rounded-lg text-center">
+                    <span className="col-span-4 text-left pl-1">항목명</span>
                     <span className="col-span-2">{m1.m}월</span>
                     <span className="col-span-2">{m2.m}월</span>
-                    <span className="col-span-3 text-right">{m3.m}월 (현재)</span>
+                    <span className="col-span-4 text-right pr-1">{m3.m}월 (현재)</span>
                   </div>
 
-                  {/* Items */}
                   {transactions
                     .filter(t => t.type === 'EXPENSE' && !t.isFixed)
                     .map(item => (
-                      <div key={item.id} className="grid grid-cols-12 items-center px-2 py-2 border-b border-slate-100 text-center font-medium">
-                        <span className="col-span-5 text-left font-bold text-slate-800 truncate">{item.title}</span>
-                        <span className="col-span-2 text-slate-400 text-[11px]">{(item.history?.[m1Key] || item.actualAmount).toLocaleString()}</span>
-                        <span className="col-span-2 text-slate-400 text-[11px]">{(item.history?.[m2Key] || item.actualAmount).toLocaleString()}</span>
-                        <span className="col-span-3 text-right font-extrabold text-amber-600">{(item.history?.[m3Key] || item.actualAmount).toLocaleString()}원</span>
+                      <div key={item.id} className="grid grid-cols-12 items-center px-1 py-2 border-b border-slate-100 text-center font-medium">
+                        <span className="col-span-4 text-left pl-1 font-bold text-slate-800 truncate text-[11px]">{item.title}</span>
+                        <span className="col-span-2 text-slate-400 text-[10px] tracking-tight">{(item.history?.[m1Key] || item.actualAmount).toLocaleString()}</span>
+                        <span className="col-span-2 text-slate-400 text-[10px] tracking-tight">{(item.history?.[m2Key] || item.actualAmount).toLocaleString()}</span>
+                        <span className="col-span-4 text-right pr-1 font-extrabold text-amber-600 text-[11px] tracking-tight">{(item.history?.[m3Key] || item.actualAmount).toLocaleString()}원</span>
                       </div>
                     ))}
 
-                  {/* Summary Footer */}
-                  <div className="grid grid-cols-12 items-center px-2 py-2.5 bg-amber-50/60 rounded-xl font-bold text-amber-900 mt-2">
-                    <span className="col-span-5 text-left">변동비 월 합계</span>
-                    <span className="col-span-2 text-center text-[11px] text-amber-600/70">
+                  <div className="grid grid-cols-12 items-center px-1 py-2.5 bg-amber-50/60 rounded-xl font-bold text-amber-900 mt-2">
+                    <span className="col-span-4 text-left pl-1 text-[11px]">변동비 월 합계</span>
+                    <span className="col-span-2 text-center text-[10px] text-amber-600/70 tracking-tight">
                       {transactions.filter(t => t.type === 'EXPENSE' && !t.isFixed).reduce((sum, t) => sum + (t.history?.[m1Key] || t.actualAmount), 0).toLocaleString()}
                     </span>
-                    <span className="col-span-2 text-center text-[11px] text-amber-600/70">
+                    <span className="col-span-2 text-center text-[10px] text-amber-600/70 tracking-tight">
                       {transactions.filter(t => t.type === 'EXPENSE' && !t.isFixed).reduce((sum, t) => sum + (t.history?.[m2Key] || t.actualAmount), 0).toLocaleString()}
                     </span>
-                    <span className="col-span-3 text-right text-sm font-black text-amber-600">
+                    <span className="col-span-4 text-right pr-1 text-xs font-black text-amber-600 tracking-tight">
                       {financialSummary.variableExpense.toLocaleString()}원
                     </span>
                   </div>
@@ -683,7 +744,7 @@
               </div>
             )}
 
-            {/* TAB 4: ENVELOPES (목적별 통장 쪼개기 + 실제 이체 기산 누적 2종 차트) */}
+            {/* 통장 쪼개기 탭 */}
             {activeTab === 'ENVELOPES' && (
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
@@ -700,33 +761,46 @@
                   const accItems = transactions.filter(t => t.targetAccount === acc.name);
                   const monthlyTotal = accItems.reduce((sum, t) => sum + getTxAmount(t), 0);
 
-                  // 1) 올해 실적 누적액 (2026년 1월~현재 실제 기록 기준 합산)
-                  const ytdAccumulated = accItems.reduce((accSum, t) => {
-                    let historySum = 0;
-                    if (t.history) {
-                      Object.keys(t.history).forEach(key => {
-                        if (key.startsWith(`${currentYear}-`)) {
-                          historySum += Number(t.history[key]) || 0;
+                  let ytdAccumulated = 0;
+                  let lifetimeAccumulated = 0;
+                  
+                  if (acc.isAccumulating && acc.startDate) {
+                    const startYear = parseInt(acc.startDate.substring(0, 4)) || 2024;
+                    const startMonth = parseInt(acc.startDate.substring(5, 7)) || 1;
+
+                    for (let m = 1; m <= currentMonth; m++) {
+                      const ym = `${currentYear}-${String(m).padStart(2, '0')}`;
+                      accItems.forEach(t => {
+                        if (t.history && t.history[ym] !== undefined) {
+                          ytdAccumulated += Number(t.history[ym]) || 0;
+                        } else {
+                          ytdAccumulated += Number(t.actualAmount) || Number(t.estimatedAmount) || 0;
                         }
                       });
                     }
-                    if (!t.history?.[`${currentYear}-${String(currentMonth).padStart(2, '0')}`] && t.isCompleted) {
-                      historySum += getTxAmount(t);
+
+                    for (let y = startYear; y <= currentYear; y++) {
+                      const mStart = (y === startYear) ? startMonth : 1;
+                      const mEnd = (y === currentYear) ? currentMonth : 12;
+
+                      for (let m = mStart; m <= mEnd; m++) {
+                        const ym = `${y}-${String(m).padStart(2, '0')}`;
+                        accItems.forEach(t => {
+                          if (t.history && t.history[ym] !== undefined) {
+                            lifetimeAccumulated += Number(t.history[ym]) || 0;
+                          } else {
+                            lifetimeAccumulated += Number(t.actualAmount) || Number(t.estimatedAmount) || 0;
+                          }
+                        });
+                      }
                     }
-                    return accSum + historySum;
-                  }, 0);
+                  }
 
-                  // 2) 지속 전체 누적액 (최초 이체 시작일 2024년 1월 1일 이후 기산 누적 총액)
-                  const pastBase = acc.basePastAccumulated || 3000000;
-                  const lifetimeAccumulated = pastBase + ytdAccumulated;
-
-                  // 시각화용 상대 비교 비율 (올해 목표 1,000만원, 전체 목표 3,000만원 기준)
                   const ytdPercent = Math.min(Math.round((ytdAccumulated / 10000000) * 100), 100);
                   const lifetimePercent = Math.min(Math.round((lifetimeAccumulated / 30000000) * 100), 100);
 
                   return (
                     <div key={acc.id} className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3">
-                      {/* Account Header Info */}
                       <div className="flex justify-between items-start border-b border-slate-100 pb-2.5">
                         <div>
                           <div className="flex items-center space-x-2">
@@ -734,9 +808,15 @@
                             <span className="font-extrabold text-slate-800 text-sm">{acc.name}</span>
                           </div>
                           <div className="text-[10px] text-slate-400 mt-0.5">{acc.note}</div>
-                          <div className="text-[9px] text-indigo-600 bg-indigo-50 font-semibold px-1.5 py-0.5 rounded inline-block mt-1">
-                            이체 기산일: 2024-01-01~
-                          </div>
+                          {acc.isAccumulating ? (
+                            <div className="text-[9px] text-indigo-600 bg-indigo-50 font-semibold px-1.5 py-0.5 rounded inline-block mt-1">
+                              기산일: {acc.startDate}부터 누적 추적
+                            </div>
+                          ) : (
+                            <div className="text-[9px] text-slate-500 bg-slate-100 font-medium px-1.5 py-0.5 rounded inline-block mt-1">
+                              단순 소비/출금용 통장 (누적바 제외)
+                            </div>
+                          )}
                         </div>
 
                         <div className="text-right">
@@ -745,48 +825,46 @@
                         </div>
                       </div>
 
-                      {/* 2개의 실적 누적 차트 영역 */}
-                      <div className="bg-slate-50/90 rounded-xl p-3 border border-slate-100 space-y-2.5">
-                        {/* 차트 1: 올해 실적 누적액 (Current Year Accumulation) */}
-                        <div>
-                          <div className="flex justify-between items-center text-[11px] mb-1">
-                            <span className="font-bold text-slate-700 flex items-center space-x-1">
-                              <i className="fa-solid fa-calendar-check text-indigo-500 text-[10px]"></i>
-                              <span>올해 실적 누적 ({currentYear}년)</span>
-                            </span>
-                            <span className="font-black text-indigo-900 text-xs">
-                              {ytdAccumulated.toLocaleString()} <span className="font-normal text-[9px] text-slate-500">원</span>
-                            </span>
+                      {acc.isAccumulating && (
+                        <div className="bg-slate-50/90 rounded-xl p-3 border border-slate-100 space-y-2.5">
+                          <div>
+                            <div className="flex justify-between items-center text-[11px] mb-1">
+                              <span className="font-bold text-slate-700 flex items-center space-x-1">
+                                <i className="fa-solid fa-calendar-check text-indigo-500 text-[10px]"></i>
+                                <span>올해 실적 누적 ({currentYear}년)</span>
+                              </span>
+                              <span className="font-black text-indigo-900 text-xs">
+                                {ytdAccumulated.toLocaleString()} <span className="font-normal text-[9px] text-slate-500">원</span>
+                              </span>
+                            </div>
+                            <div className="w-full bg-slate-200/80 h-2 rounded-full overflow-hidden">
+                              <div 
+                                className={`h-full ${acc.color} transition-all duration-700 rounded-full`}
+                                style={{ width: `${ytdPercent || 6}%` }}
+                              ></div>
+                            </div>
                           </div>
-                          <div className="w-full bg-slate-200/80 h-2 rounded-full overflow-hidden">
-                            <div 
-                              className={`h-full ${acc.color} transition-all duration-700 rounded-full`}
-                              style={{ width: `${ytdPercent || 6}%` }}
-                            ></div>
+
+                          <div className="pt-2 border-t border-slate-200/60">
+                            <div className="flex justify-between items-center text-[11px] mb-1">
+                              <span className="font-bold text-slate-700 flex items-center space-x-1">
+                                <i className="fa-solid fa-vault text-emerald-600 text-[10px]"></i>
+                                <span>지속 전체 누적액 ({acc.startDate} 기산)</span>
+                              </span>
+                              <span className="font-black text-emerald-700 text-xs">
+                                {lifetimeAccumulated.toLocaleString()} <span className="font-normal text-[9px] text-slate-500">원</span>
+                              </span>
+                            </div>
+                            <div className="w-full bg-slate-200/80 h-2 rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-emerald-500 transition-all duration-700 rounded-full"
+                                style={{ width: `${lifetimePercent || 8}%` }}
+                              ></div>
+                            </div>
                           </div>
                         </div>
+                      )}
 
-                        {/* 차트 2: 지속 전체 누적액 (Lifetime Continuous Accumulation) */}
-                        <div className="pt-2 border-t border-slate-200/60">
-                          <div className="flex justify-between items-center text-[11px] mb-1">
-                            <span className="font-bold text-slate-700 flex items-center space-x-1">
-                              <i className="fa-solid fa-vault text-emerald-600 text-[10px]"></i>
-                              <span>지속 전체 누적액 (2024.01.01 기산)</span>
-                            </span>
-                            <span className="font-black text-emerald-700 text-xs">
-                              {lifetimeAccumulated.toLocaleString()} <span className="font-normal text-[9px] text-slate-500">원</span>
-                            </span>
-                          </div>
-                          <div className="w-full bg-slate-200/80 h-2 rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-emerald-500 transition-all duration-700 rounded-full"
-                              style={{ width: `${lifetimePercent || 8}%` }}
-                            ></div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Items checklist inside this account */}
                       <div className="space-y-1.5 pt-1">
                         {accItems.map(item => (
                           <div key={item.id} className="flex justify-between items-center text-xs p-2 bg-slate-50/50 rounded-xl border border-slate-100">
@@ -811,19 +889,29 @@
               </div>
             )}
 
-            {/* TAB 5: TRENDS (지출 추이) */}
+            {/* 지출 추이 탭 */}
             {activeTab === 'TRENDS' && (
-              <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3">
-                <div className="flex justify-between items-center border-b pb-2">
-                  <h3 className="font-extrabold text-sm text-slate-800">📈 변동 지출 항목별 최근 6개월 추이</h3>
-                  <span className="text-[10px] text-slate-400">관리비 • 도시가스 • 주유비</span>
+              <div className="space-y-4">
+                <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3">
+                  <div className="flex justify-between items-center border-b pb-2">
+                    <h3 className="font-extrabold text-sm text-slate-800">📈 변동 지출 항목별 최근 6개월 추이</h3>
+                    <span className="text-[10px] text-slate-400">관리비 • 도시가스 • 주유비</span>
+                  </div>
+                  <TrendChart />
                 </div>
-                <TrendChart />
+
+                <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3">
+                  <div className="flex justify-between items-center border-b pb-2">
+                    <h3 className="font-extrabold text-sm text-slate-800">📊 최근 6개월 수입 • 지출 • 투자 종합 추이</h3>
+                    <span className="text-[10px] text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded">3대 자금 흐름</span>
+                  </div>
+                  <IncomeExpenseInvestChart transactions={transactions} />
+                </div>
               </div>
             )}
           </main>
 
-          {/* MODALS */}
+          {/* 모달 레이어 모음 */}
           {showRoutineModal && (
             <RoutineWizard 
               transactions={transactions} 
@@ -865,7 +953,6 @@
             />
           )}
 
-          {/* 삭제 확인 커스텀 모달 */}
           {deleteConfirmId && (
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-2xl w-full max-w-xs p-5 shadow-2xl space-y-4 text-center">
@@ -897,10 +984,8 @@
       );
     }
 
-    // 3-Minute Payday Routine Wizard Component
     function RoutineWizard({ transactions, setTransactions, onClose, safeToSpend, overtimeIncome, currentMonth }) {
       const [step, setStep] = useState(1);
-      
       const incomeItems = transactions.filter(t => t.type === 'INCOME');
       const varExpenseItems = transactions.filter(t => t.type === 'EXPENSE' && !t.isFixed);
 
@@ -926,7 +1011,6 @@
               </button>
             </div>
 
-            {/* STEP 1: INCOME CONFIRMATION */}
             {step === 1 && (
               <div className="space-y-3">
                 <p className="text-xs text-slate-500">
@@ -959,7 +1043,6 @@
               </div>
             )}
 
-            {/* STEP 2: VARIABLE EXPENSE INPUT */}
             {step === 2 && (
               <div className="space-y-3">
                 <p className="text-xs text-slate-500">
@@ -1000,7 +1083,6 @@
               </div>
             )}
 
-            {/* STEP 3: FINAL SUMMARY */}
             {step === 3 && (
               <div className="space-y-4 text-center">
                 <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-xl">
@@ -1023,7 +1105,7 @@
                     <span className="font-bold">{overtimeIncome.toLocaleString()}원</span>
                   </div>
                   <div className="text-[10px] text-indigo-600">
-                    * 산식: (급여수익 - 필수선출금)
+                    * 산식: (급여수익 - 필수선출금(지출+투자))
                   </div>
                 </div>
 
@@ -1040,11 +1122,11 @@
       );
     }
 
-    // Bank Account Management Modal Component
     function AccountManager({ accounts, setAccounts, onClose }) {
       const [name, setName] = useState('');
       const [note, setNote] = useState('');
-      const [startDate, setStartDate] = useState('2024-01-01');
+      const [isAccumulating, setIsAccumulating] = useState(true);
+      const [startDate, setStartDate] = useState('2026-01-01');
 
       const addAccount = () => {
         if (!name) return;
@@ -1052,8 +1134,8 @@
           id: 'acc_' + Date.now(),
           name,
           note,
-          startDate: '2024-01-01',
-          basePastAccumulated: 0,
+          isAccumulating,
+          startDate: isAccumulating ? startDate : undefined,
           color: 'bg-purple-500'
         };
         setAccounts(prev => [...prev, newAcc]);
@@ -1080,7 +1162,9 @@
                 <div key={a.id} className="flex justify-between items-center p-2.5 bg-slate-50 rounded-xl text-xs">
                   <div>
                     <div className="font-bold text-slate-800">{a.name}</div>
-                    <div className="text-[10px] text-slate-400">{a.note} (2024-01-01 기산)</div>
+                    <div className="text-[10px] text-slate-400">
+                      {a.note} {a.isAccumulating ? `(${a.startDate} 기산 누적)` : '(소비용)'}
+                    </div>
                   </div>
                   <button onClick={() => deleteAcc(a.id)} className="text-rose-400 hover:text-rose-600 p-1">
                     <i className="fa-solid fa-trash"></i>
@@ -1089,10 +1173,10 @@
               ))}
             </div>
 
-            <div className="pt-2 border-t space-y-2">
+            <div className="pt-2 border-t space-y-2 text-xs">
               <input 
                 type="text" 
-                placeholder="통장 이름 (예: 모임비 통장)" 
+                placeholder="통장 이름 (예: 연금저축 통장)" 
                 value={name} 
                 onChange={(e) => setName(e.target.value)}
                 className="w-full text-xs p-2.5 border rounded-xl"
@@ -1104,6 +1188,29 @@
                 onChange={(e) => setNote(e.target.value)}
                 className="w-full text-xs p-2.5 border rounded-xl"
               />
+
+              <div className="flex items-center justify-between p-2 bg-slate-50 rounded-xl">
+                <label className="font-bold text-slate-700 text-[11px]">누적 바차트 표시 여부</label>
+                <input 
+                  type="checkbox" 
+                  checked={isAccumulating} 
+                  onChange={(e) => setIsAccumulating(e.target.checked)} 
+                  className="rounded text-indigo-600"
+                />
+              </div>
+
+              {isAccumulating && (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500">누적 기산 시작일</label>
+                  <input 
+                    type="date" 
+                    value={startDate} 
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="w-full border p-2 rounded-xl text-xs bg-white"
+                  />
+                </div>
+              )}
+
               <button 
                 onClick={addAccount}
                 className="w-full bg-indigo-600 text-white font-bold text-xs py-2.5 rounded-xl"
@@ -1116,7 +1223,6 @@
       );
     }
 
-    // Google Sheets Sync Modal
     function SheetSyncModal({ sheetUrl, setSheetUrl, onClose, onSync, isSyncing }) {
       const [copied, setCopied] = useState(false);
 
@@ -1132,19 +1238,19 @@
 }
 
 function doPost(e) {
-  var data = JSON.parse(e.postData.contents);
+  var postDataString = e.postData ? e.postData.contents : "";
+  var data = JSON.parse(postDataString || "{}");
   var sheet = SpreadsheetApp.getActiveSpreadsheet();
   var txSheet = sheet.getSheetByName("Transactions") || sheet.insertSheet("Transactions");
   var accSheet = sheet.getSheetByName("Accounts") || sheet.insertSheet("Accounts");
   
-  txSheet.getRange(1,1).setValue(JSON.stringify(data.transactions));
-  accSheet.getRange(1,1).setValue(JSON.stringify(data.accounts));
+  if (data.transactions) txSheet.getRange(1,1).setValue(JSON.stringify(data.transactions));
+  if (data.accounts) accSheet.getRange(1,1).setValue(JSON.stringify(data.accounts));
   
   return ContentService.createTextOutput("SUCCESS").setMimeType(ContentService.MimeType.TEXT);
 }`;
 
       const copyCode = () => {
-        document.execCommand('copy');
         navigator.clipboard?.writeText(gasScriptCode);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
@@ -1154,7 +1260,7 @@ function doPost(e) {
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b pb-3">
-              <h3 className="font-extrabold text-slate-800 text-sm">📊 구글 시트 DB 연동</h3>
+              <h3 className="font-extrabold text-slate-800 text-sm">📊 구글 시트 DB 상시 연동</h3>
               <button onClick={onClose} className="text-slate-400">
                 <i className="fa-solid fa-xmark"></i>
               </button>
@@ -1166,9 +1272,19 @@ function doPost(e) {
                 type="text" 
                 placeholder="https://script.google.com/macros/s/.../exec"
                 value={sheetUrl}
-                onChange={(e) => setSheetUrl(e.target.value)}
-                className="w-full border p-2.5 rounded-xl text-xs"
+                onChange={(e) => setSheetUrl(e.target.value.trim())}
+                className="w-full border p-2.5 rounded-xl text-xs font-mono"
               />
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-[11px] text-amber-900 space-y-1">
+              <div className="font-bold text-amber-800 flex items-center space-x-1">
+                <i className="fa-solid fa-triangle-exclamation"></i>
+                <span>배포 필수 설정 (오류 방지)</span>
+              </div>
+              <p>1. <b>웹앱으로 배포</b> ➔ 실행 사용자: <b>내 계정</b></p>
+              <p>2. 액세스 권한: <b>모든 사용자(Anyone)</b>로 설정해야 CORS 에러가 없습니다.</p>
+              <p>3. 💡 URL 등록 시 내용 변경 시 <b>상시 자동 백업</b>됩니다.</p>
             </div>
 
             <button 
@@ -1181,18 +1297,18 @@ function doPost(e) {
 
             <div className="grid grid-cols-2 gap-2 pt-2 border-t">
               <button 
-                onClick={() => onSync('IMPORT')}
+                onClick={() => onSync('IMPORT', false)}
                 disabled={isSyncing}
-                className="bg-emerald-600 text-white font-bold text-xs py-2.5 rounded-xl shadow"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2.5 rounded-xl shadow transition-colors"
               >
-                📥 시트에서 불러오기
+                {isSyncing ? '동기화 중...' : '📥 시트에서 불러오기'}
               </button>
               <button 
-                onClick={() => onSync('EXPORT')}
+                onClick={() => onSync('EXPORT', false)}
                 disabled={isSyncing}
-                className="bg-indigo-600 text-white font-bold text-xs py-2.5 rounded-xl shadow"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-2.5 rounded-xl shadow transition-colors"
               >
-                📤 시트로 내보내기
+                {isSyncing ? '동기화 중...' : '📤 시트로 내보내기'}
               </button>
             </div>
           </div>
@@ -1200,15 +1316,13 @@ function doPost(e) {
       );
     }
 
-    // Add Transaction Modal
     function AddTransactionModal({ accounts, onAdd, onClose }) {
       const [type, setType] = useState('EXPENSE');
-      const [isFixed, setIsFixed] = useState(false);
+      const [isFixed, setIsFixed] = useState(true);
       const [title, setTitle] = useState('');
       const [category, setCategory] = useState('공과금');
       const [amount, setAmount] = useState('');
       const [targetAccount, setTargetAccount] = useState(accounts[0]?.name || '공과금 통장');
-      const [dueDay, setDueDay] = useState(25);
 
       const handleSubmit = (e) => {
         e.preventDefault();
@@ -1216,13 +1330,12 @@ function doPost(e) {
         onAdd({
           id: 'tx_' + Date.now(),
           type,
-          isFixed,
+          isFixed: (type === 'EXPENSE' || type === 'INVESTMENT') ? isFixed : true,
           category,
           title,
           estimatedAmount: Number(amount),
           actualAmount: Number(amount),
           targetAccount,
-          dueDay: Number(dueDay),
           isCompleted: false,
           history: {}
         });
@@ -1238,24 +1351,31 @@ function doPost(e) {
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="grid grid-cols-3 gap-1.5 text-xs">
               <button 
                 type="button" 
-                onClick={() => setType('EXPENSE')} 
+                onClick={() => { setType('EXPENSE'); setCategory('공과금'); }} 
                 className={`py-2 rounded-lg font-bold ${type === 'EXPENSE' ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-600'}`}
               >
-                지출 (EXPENSE)
+                지출
               </button>
               <button 
                 type="button" 
-                onClick={() => setType('INCOME')} 
+                onClick={() => { setType('INVESTMENT'); setCategory('투자'); }} 
+                className={`py-2 rounded-lg font-bold ${type === 'INVESTMENT' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600'}`}
+              >
+                투자
+              </button>
+              <button 
+                type="button" 
+                onClick={() => { setType('INCOME'); setCategory('급여'); }} 
                 className={`py-2 rounded-lg font-bold ${type === 'INCOME' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'}`}
               >
-                수입 (INCOME)
+                수입
               </button>
             </div>
 
-            {type === 'EXPENSE' && (
+            {(type === 'EXPENSE' || type === 'INVESTMENT') && (
               <div className="flex items-center space-x-2 text-xs py-1">
                 <input 
                   type="checkbox" 
@@ -1264,37 +1384,29 @@ function doPost(e) {
                   onChange={(e) => setIsFixed(e.target.checked)} 
                   className="rounded text-indigo-600"
                 />
-                <label htmlFor="fixedCheck" className="font-semibold text-slate-700">고정비 여부 (체크 시 매달 정액)</label>
+                <label htmlFor="fixedCheck" className="font-semibold text-slate-700">
+                  {type === 'INVESTMENT' ? '고정 투자 여부 (매달 정액 적립/투자)' : '고정비 여부 (체크 시 매달 정액)'}
+                </label>
               </div>
             )}
 
             <input 
               type="text" 
-              placeholder="항목명 (예: 관리비, 주유비, 보험료)" 
+              placeholder="항목명 (예: 아파트 관리비, 연금저축, 기본급)" 
               value={title} 
               onChange={(e) => setTitle(e.target.value)} 
               className="w-full border p-2.5 rounded-xl text-xs" 
               required 
             />
 
-            <div className="grid grid-cols-2 gap-2">
-              <input 
-                type="number" 
-                placeholder="금액 (원)" 
-                value={amount} 
-                onChange={(e) => setAmount(e.target.value)} 
-                className="border p-2.5 rounded-xl text-xs" 
-                required 
-              />
-              <input 
-                type="number" 
-                placeholder="출금예정일 (1~31)" 
-                value={dueDay} 
-                onChange={(e) => setDueDay(e.target.value)} 
-                className="border p-2.5 rounded-xl text-xs" 
-                required 
-              />
-            </div>
+            <input 
+              type="number" 
+              placeholder="금액 (원)" 
+              value={amount} 
+              onChange={(e) => setAmount(e.target.value)} 
+              className="w-full border p-2.5 rounded-xl text-xs" 
+              required 
+            />
 
             <div className="space-y-1">
               <label className="text-[11px] font-bold text-slate-600">목적 통장 선택</label>
@@ -1320,7 +1432,6 @@ function doPost(e) {
       );
     }
 
-    // Chart.js Component for Trend Tab (Fuel, Gas, Management Fees)
     function TrendChart() {
       const canvasRef = useRef(null);
 
@@ -1371,6 +1482,93 @@ function doPost(e) {
 
         return () => chart.destroy();
       }, []);
+
+      return (
+        <div className="h-52 w-full">
+          <canvas ref={canvasRef}></canvas>
+        </div>
+      );
+    }
+
+    function IncomeExpenseInvestChart({ transactions }) {
+      const canvasRef = useRef(null);
+
+      useEffect(() => {
+        if (!canvasRef.current) return;
+        const ctx = canvasRef.current.getContext('2d');
+
+        const months = [
+          { label: '4월', key: '2026-04' },
+          { label: '5월', key: '2026-05' },
+          { label: '6월', key: '2026-06' },
+          { label: '7월', key: '2026-07' },
+          { label: '8월', key: '2026-08' },
+          { label: '9월', key: '2026-09' }
+        ];
+
+        const incomeData = months.map(m => {
+          return transactions
+            .filter(t => t.type === 'INCOME')
+            .reduce((sum, t) => sum + (t.history?.[m.key] !== undefined ? Number(t.history[m.key]) : Number(t.actualAmount)), 0);
+        });
+
+        const expenseData = months.map(m => {
+          return transactions
+            .filter(t => t.type === 'EXPENSE')
+            .reduce((sum, t) => sum + (t.history?.[m.key] !== undefined ? Number(t.history[m.key]) : Number(t.actualAmount)), 0);
+        });
+
+        const investData = months.map(m => {
+          return transactions
+            .filter(t => t.type === 'INVESTMENT')
+            .reduce((sum, t) => sum + (t.history?.[m.key] !== undefined ? Number(t.history[m.key]) : Number(t.actualAmount)), 0);
+        });
+
+        const chart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: months.map(m => m.label),
+            datasets: [
+              {
+                label: '수입',
+                data: incomeData,
+                backgroundColor: '#10b981',
+                borderRadius: 4
+              },
+              {
+                label: '지출',
+                data: expenseData,
+                backgroundColor: '#f43f5e',
+                borderRadius: 4
+              },
+              {
+                label: '투자',
+                data: investData,
+                backgroundColor: '#9333ea',
+                borderRadius: 4
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } }
+            },
+            scales: {
+              y: { 
+                ticks: { 
+                  font: { size: 9 },
+                  callback: (val) => (val / 10000) + '만'
+                } 
+              },
+              x: { ticks: { font: { size: 9 } } }
+            }
+          }
+        });
+
+        return () => chart.destroy();
+      }, [transactions]);
 
       return (
         <div className="h-56 w-full">
