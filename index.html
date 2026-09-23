@@ -52,7 +52,7 @@
 
     // 💡 [깃허브 배포용 설정] 아래 따옴표 안에 작성하신 Google Apps Script Web App URL을 붙여넣으시면
     // 앱 시작 시 자동 데이터 로드 및 내용 변경 시 실시간 자동 백업이 상시 작동합니다.
-    const DEFAULT_SHEET_URL = "https://script.google.com/macros/s/AKfycbycIVEh0BeZiGXT2dRAjDEg3wZgxs5tYVItC7PQW2mThCiYdW4fimhZMUfmNCywUrOg/exec"; 
+    const DEFAULT_SHEET_URL = ""; 
 
     // 안전한 로컬스토리지 입출력 헬퍼
     const safeStorage = {
@@ -74,7 +74,7 @@
       }
     };
 
-    // 원래의 8개 통장 리스트 구성 복원
+    // 원본 8개 목적별 통장 리스트
     const DEFAULT_ACCOUNTS = [
       { id: 'acc_1', name: '고정비 통장', color: 'bg-indigo-500', note: '보험료, 대출이자, 구독료, 공과금', isAccumulating: false },
       { id: 'acc_2', name: '투자비 통장', color: 'bg-blue-600', note: '노후대비 투자재원 마련, 주식/ETF', isAccumulating: true, startDate: '2025-01-01' },
@@ -90,8 +90,8 @@
       // 수입 (INCOME)
       { id: 'tx_1', type: 'INCOME', isFixed: true, category: '급여', title: '기본 급여 수입', estimatedAmount: 6516000, actualAmount: 6516000, targetAccount: '우리은행 통장', isCompleted: true, history: { '2026-09': 6516000 } },
       { id: 'tx_2', type: 'INCOME', isFixed: false, category: '월세', title: '월세 임대 수입', estimatedAmount: 911000, actualAmount: 911000, targetAccount: '우리은행 통장', isCompleted: false, history: { '2026-09': 911000 } },
-      { id: 'tx_bonus', type: 'INCOME', isFixed: false, category: '상여금', title: '설/추석 명절 상여금', estimatedAmount: 0, actualAmount: 0, targetAccount: '투자비 통장', isCompleted: false, history: { '2026-09': 0 } },
-      { id: 'tx_incentive', type: 'INCOME', isFixed: false, category: '인센티브', title: '비정기 성과급/인센티브', estimatedAmount: 0, actualAmount: 0, targetAccount: '투자비 통장', isCompleted: false, history: { '2026-09': 0 } },
+      { id: 'tx_bonus', type: 'INCOME', isFixed: false, category: '상여금', title: '설/추석 명절 상여금', estimatedAmount: 0, actualAmount: 0, targetAccount: '투자비 통장', isCompleted: false, history: {} },
+      { id: 'tx_incentive', type: 'INCOME', isFixed: false, category: '인센티브', title: '비정기 성과급/인센티브', estimatedAmount: 0, actualAmount: 0, targetAccount: '투자비 통장', isCompleted: false, history: {} },
       
       // 투자 (INVESTMENT)
       { id: 'tx_inv1', type: 'INVESTMENT', isFixed: true, category: '연금', title: '개인연금저축 펀드', estimatedAmount: 500000, actualAmount: 500000, targetAccount: '연금저축 통장', isCompleted: true, history: { '2026-09': 500000 } },
@@ -106,6 +106,7 @@
       { id: 'tx_10', type: 'EXPENSE', isFixed: false, category: '카드대금', title: '생활비 신용카드 대금', estimatedAmount: 800000, actualAmount: 850000, targetAccount: '생활비 통장', isCompleted: false, history: { '2026-09': 850000 } },
     ];
 
+    // 휴일 고려한 급여일 자동 계산
     const calculateAdjustedPayday = (year, month) => {
       let targetDate = new Date(year, month - 1, 25);
       const isHoliday = (d) => {
@@ -124,8 +125,8 @@
     };
 
     function PaydayApp() {
-      const [transactions, setTransactions] = useState(() => safeStorage.getItem('payday_transactions_v11', DEFAULT_TRANSACTIONS));
-      const [accounts, setAccounts] = useState(() => safeStorage.getItem('payday_accounts_v11', DEFAULT_ACCOUNTS));
+      const [transactions, setTransactions] = useState(() => safeStorage.getItem('payday_transactions_v14', DEFAULT_TRANSACTIONS));
+      const [accounts, setAccounts] = useState(() => safeStorage.getItem('payday_accounts_v14', DEFAULT_ACCOUNTS));
       const [sheetUrl, setSheetUrl] = useState(() => {
         try {
           return localStorage.getItem('payday_sheet_url') || DEFAULT_SHEET_URL;
@@ -182,7 +183,7 @@
 
       const monthKey = useMemo(() => `${currentYear}-${String(currentMonth).padStart(2, '0')}`, [currentYear, currentMonth]);
 
-      // 비정기 수입/투자 항목 판별 함수 (상여금, 인센티브, 명절보너스 등)
+      // 비정기 수입/투자 항목 판별 함수 (상여금, 인센티브 등)
       const isIrregularTx = (t) => {
         if (!t) return false;
         const cat = t.category || '';
@@ -192,24 +193,22 @@
                title.includes('보너스') || title.includes('성과급');
       };
 
-      // 월별 금액 연산 헬퍼 (월별 데이터 독립성 보장)
+      // 월별 금액 연산 헬퍼 (월별 데이터 완전 독립성 보장)
       const getTxAmountForMonth = (t, ym) => {
-        // 해당 월에 명시적인 수정/기록 내역이 있는 경우
+        if (!t) return 0;
+        // 1. 해당 월에 명시적인 수정/기록 내역이 있는 경우 해당 기록 사용
         if (t.history && t.history[ym] !== undefined) {
           return Number(t.history[ym]) || 0;
         }
-        // 현재 선택한 연월인 경우
-        if (ym === monthKey) {
-          return Number(t.actualAmount) || Number(t.estimatedAmount) || 0;
-        }
-        // 비정기 항목(상여금, 인센티브)은 명시적 기록이 없는 과거/미래 달에는 0원 처리
+        // 2. 비정기 항목(상여금, 인센티브)은 명시적 기록이 없는 달에는 0원 처리
         if (isIrregularTx(t)) {
           return 0;
         }
-        // 일반 고정 정액 항목인 경우에만 기본 금액 반환
+        // 3. 고정 정액 항목인 경우 기본 예상 금액 반환
         if (t.isFixed) {
-          return Number(t.estimatedAmount) || Number(t.actualAmount) || 0;
+          return Number(t.estimatedAmount) || 0;
         }
+        // 4. 변동 항목 중 히스토리가 없는 달은 0원 처리 (달별 독립성 유지)
         return 0;
       };
 
@@ -258,7 +257,9 @@
           .reduce((sum, t) => sum + getTxAmountForMonth(t, ym), 0);
 
         const essential = fixedExp + varExp + invTotal;
+        // 초과근무재원 = 기본급여수입 - 필수선출금(고정+변동+투자)
         const overtime = baseInc - essential;
+        // 이달의 자유 운용 재원 = 수입 총액 - 필수선출금
         const safe = totalInc - essential;
 
         return {
@@ -322,8 +323,8 @@
       }, []);
 
       useEffect(() => {
-        safeStorage.setItem('payday_transactions_v11', transactions);
-        safeStorage.setItem('payday_accounts_v11', accounts);
+        safeStorage.setItem('payday_transactions_v14', transactions);
+        safeStorage.setItem('payday_accounts_v14', accounts);
 
         if (!isInitialMount.current && sheetUrl && sheetUrl.startsWith('http')) {
           const timer = setTimeout(() => {
@@ -374,7 +375,8 @@
         setTransactions(prev => prev.map(t => {
           if (t.id === id) {
             const updatedHistory = { ...(t.history || {}), [monthKey]: val };
-            return { ...t, actualAmount: val, history: updatedHistory };
+            // 공통 actualAmount 필드를 오버라이드하지 않고 해당 월의 history만 변경하여 오염 방지
+            return { ...t, history: updatedHistory };
           }
           return t;
         }));
@@ -462,6 +464,7 @@
             </div>
           </header>
 
+          {/* Main Dashboard */}
           <main className="p-4 space-y-4 flex-1">
             {/* Month Navigation */}
             <div className="flex items-center justify-between bg-white p-2.5 rounded-2xl border border-slate-200 shadow-sm">
@@ -885,7 +888,7 @@
                       const mEnd = (y === currentYear) ? currentMonth : 12;
 
                       for (let m = mStart; m <= mEnd; m++) {
-                        if (y === currentYear && m > currentMonth) break; // 현재월까지만 합산
+                        if (y === currentYear && m > currentMonth) break;
                         const ym = `${y}-${String(m).padStart(2, '0')}`;
                         if (isOvertimeAccount) {
                           const mFin = getMonthFinancials(ym);
@@ -1115,7 +1118,7 @@
         setTransactions(prev => prev.map(t => {
           if (t.id === id) {
             const updatedHistory = { ...(t.history || {}), [monthKey]: num };
-            return { ...t, actualAmount: num, history: updatedHistory };
+            return { ...t, history: updatedHistory };
           }
           return t;
         }));
@@ -1153,7 +1156,7 @@
                       </div>
                       <input 
                         type="number"
-                        value={item.history?.[monthKey] !== undefined ? item.history[monthKey] : item.actualAmount}
+                        value={item.history?.[monthKey] !== undefined ? item.history[monthKey] : (item.isFixed ? item.estimatedAmount : 0)}
                         onChange={(e) => updateItemAmount(item.id, e.target.value)}
                         className="w-28 text-right font-extrabold text-sm border border-slate-300 rounded-lg p-1.5 focus:ring-2 focus:ring-indigo-500"
                       />
@@ -1185,7 +1188,7 @@
                       </div>
                       <input 
                         type="number"
-                        value={item.history?.[monthKey] !== undefined ? item.history[monthKey] : item.actualAmount}
+                        value={item.history?.[monthKey] !== undefined ? item.history[monthKey] : 0}
                         onChange={(e) => updateItemAmount(item.id, e.target.value)}
                         className="w-28 text-right font-extrabold text-sm border border-slate-300 rounded-lg p-1.5 focus:ring-2 focus:ring-indigo-500"
                       />
@@ -1726,9 +1729,6 @@ function doPost(e) {
             if (tx.history && tx.history[m.key] !== undefined) {
               return Number(tx.history[m.key]);
             }
-            if (m.key === monthKey) {
-              return Number(tx.actualAmount) || Number(tx.estimatedAmount) || 0;
-            }
             return 0;
           });
 
@@ -1807,7 +1807,6 @@ function doPost(e) {
 
         const getMonthVal = (t, mKey) => {
           if (t.history && t.history[mKey] !== undefined) return Number(t.history[mKey]) || 0;
-          if (mKey === monthKey) return Number(t.actualAmount) || 0;
           if (isIrregular(t)) return 0;
           if (t.isFixed) return Number(t.estimatedAmount) || 0;
           return 0;
