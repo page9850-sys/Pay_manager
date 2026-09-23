@@ -52,9 +52,9 @@
 
     // 💡 [깃허브 배포용 설정] 아래 따옴표 안에 작성하신 Google Apps Script Web App URL을 붙여넣으시면
     // 앱 시작 시 자동 데이터 로드 및 내용 변경 시 실시간 자동 백업이 상시 작동합니다.
-    const DEFAULT_SHEET_URL = "https://script.google.com/macros/s/AKfycbycIVEh0BeZiGXT2dRAjDEg3wZgxs5tYVItC7PQW2mThCiYdW4fimhZMUfmNCywUrOg/exec"; 
+    const DEFAULT_SHEET_URL = ""; 
 
-    // 안전한 로컬스토리지 입출력 헬퍼 (보안 프레임 차단 오류 방지)
+    // 안전한 로컬스토리지 입출력 헬퍼
     const safeStorage = {
       getItem: (key, fallback) => {
         try {
@@ -74,37 +74,36 @@
       }
     };
 
-    // 초기 샘플 통장 데이터
+    // 원래의 8개 통장 리스트 구성 복원
     const DEFAULT_ACCOUNTS = [
-      { id: 'acc_1', name: '공과금 통장', color: 'bg-emerald-500', note: '관리비, 가스비, 주유비', isAccumulating: false },
-      { id: 'acc_2', name: '고정비 통장', color: 'bg-indigo-500', note: '보험료, 대출이자, 구독료', isAccumulating: false },
-      { id: 'acc_3', name: '카드대금 통장', color: 'bg-amber-500', note: '생활비 신용카드 결제', isAccumulating: false },
-      { id: 'acc_4', name: '초과근무/자산 통장', color: 'bg-blue-600', note: '초과근무재원, 수당, 자산 형성', isAccumulating: true, startDate: '2026-01-01' },
-      { id: 'acc_5', name: '연금저축/투자비 통장', color: 'bg-purple-600', note: '연금저축, 주식, 자율투자', isAccumulating: true, startDate: '2024-01-01' },
+      { id: 'acc_1', name: '고정비 통장', color: 'bg-indigo-500', note: '보험료, 대출이자, 구독료, 공과금', isAccumulating: false },
+      { id: 'acc_2', name: '투자비 통장', color: 'bg-blue-600', note: '노후대비 투자재원 마련, 주식/ETF', isAccumulating: true, startDate: '2025-01-01' },
+      { id: 'acc_3', name: '연금저축 통장', color: 'bg-purple-600', note: '개인연금저축 재원 마련', isAccumulating: true, startDate: '2024-01-01' },
+      { id: 'acc_4', name: '용돈 통장', color: 'bg-emerald-500', note: '개인 자율 용돈 지출', isAccumulating: false },
+      { id: 'acc_5', name: '생활비 통장', color: 'bg-amber-500', note: '장보기, 생활용품, 신용카드 결제', isAccumulating: false },
+      { id: 'acc_6', name: '외식비 통장', color: 'bg-rose-500', note: '외식 및 식비 지출', isAccumulating: false },
+      { id: 'acc_7', name: '초과근무 통장', color: 'bg-cyan-600', note: '초과근무재원, 수당 자동 집계', isAccumulating: true, startDate: '2026-01-01' },
+      { id: 'acc_8', name: '우리은행 통장', color: 'bg-slate-700', note: '기본 급여 수령 및 주거래 계좌', isAccumulating: false },
     ];
 
     const DEFAULT_TRANSACTIONS = [
       // 수입 (INCOME)
-      { id: 'tx_1', type: 'INCOME', isFixed: true, category: '급여', title: '기본 급여 수입', estimatedAmount: 6516000, actualAmount: 6516000, targetAccount: '초과근무/자산 통장', isCompleted: true, history: { '2026-09': 6516000 } },
-      { id: 'tx_2', type: 'INCOME', isFixed: false, category: '월세', title: '월세 임대 수입', estimatedAmount: 911000, actualAmount: 911000, targetAccount: '초과근무/자산 통장', isCompleted: false, history: { '2026-09': 911000 } },
-      { id: 'tx_bonus', type: 'INCOME', isFixed: false, category: '상여금', title: '설/추석 명절 상여금', estimatedAmount: 0, actualAmount: 0, targetAccount: '연금저축/투자비 통장', isCompleted: false, history: { '2026-09': 0 } },
-      { id: 'tx_incentive', type: 'INCOME', isFixed: false, category: '인센티브', title: '비정기 성과급/인센티브', estimatedAmount: 0, actualAmount: 0, targetAccount: '연금저축/투자비 통장', isCompleted: false, history: { '2026-09': 0 } },
+      { id: 'tx_1', type: 'INCOME', isFixed: true, category: '급여', title: '기본 급여 수입', estimatedAmount: 6516000, actualAmount: 6516000, targetAccount: '우리은행 통장', isCompleted: true, history: { '2026-09': 6516000 } },
+      { id: 'tx_2', type: 'INCOME', isFixed: false, category: '월세', title: '월세 임대 수입', estimatedAmount: 911000, actualAmount: 911000, targetAccount: '우리은행 통장', isCompleted: false, history: { '2026-09': 911000 } },
+      { id: 'tx_bonus', type: 'INCOME', isFixed: false, category: '상여금', title: '설/추석 명절 상여금', estimatedAmount: 0, actualAmount: 0, targetAccount: '투자비 통장', isCompleted: false, history: { '2026-09': 0 } },
+      { id: 'tx_incentive', type: 'INCOME', isFixed: false, category: '인센티브', title: '비정기 성과급/인센티브', estimatedAmount: 0, actualAmount: 0, targetAccount: '투자비 통장', isCompleted: false, history: { '2026-09': 0 } },
       
       // 투자 (INVESTMENT)
-      { id: 'tx_inv1', type: 'INVESTMENT', isFixed: true, category: '연금', title: '개인연금저축 펀드', estimatedAmount: 300000, actualAmount: 300000, targetAccount: '연금저축/투자비 통장', isCompleted: true, history: { '2026-04': 300000, '2026-05': 300000, '2026-06': 300000, '2026-07': 300000, '2026-08': 300000, '2026-09': 300000 } },
-      { id: 'tx_inv2', type: 'INVESTMENT', isFixed: true, category: '저축', title: '주택청약 종합저축', estimatedAmount: 100000, actualAmount: 100000, targetAccount: '초과근무/자산 통장', isCompleted: false, history: { '2026-04': 100000, '2026-05': 100000, '2026-06': 100000, '2026-07': 100000, '2026-08': 100000, '2026-09': 100000 } },
-      { id: 'tx_inv3', type: 'INVESTMENT', isFixed: false, category: '투자', title: '미국 ETF 적립식 투자', estimatedAmount: 200000, actualAmount: 200000, targetAccount: '연금저축/투자비 통장', isCompleted: false, history: { '2026-04': 200000, '2026-05': 200000, '2026-06': 200000, '2026-07': 200000, '2026-08': 200000, '2026-09': 200000 } },
+      { id: 'tx_inv1', type: 'INVESTMENT', isFixed: true, category: '연금', title: '개인연금저축 펀드', estimatedAmount: 500000, actualAmount: 500000, targetAccount: '연금저축 통장', isCompleted: true, history: { '2026-09': 500000 } },
+      { id: 'tx_inv2', type: 'INVESTMENT', isFixed: true, category: '저축', title: '노후대비 투자바', estimatedAmount: 3000000, actualAmount: 3000000, targetAccount: '투자비 통장', isCompleted: false, history: { '2026-09': 3000000 } },
 
       // 고정 지출 (EXPENSE - FIXED)
-      { id: 'tx_3', type: 'EXPENSE', isFixed: true, category: '보험료', title: '실손/건강 보험료', estimatedAmount: 180000, actualAmount: 180000, targetAccount: '고정비 통장', isCompleted: false, history: { '2026-04': 180000, '2026-05': 180000, '2026-06': 180000, '2026-07': 180000, '2026-08': 180000, '2026-09': 180000 } },
-      { id: 'tx_4', type: 'EXPENSE', isFixed: true, category: '대출이자', title: '주택담보대출 이자', estimatedAmount: 420000, actualAmount: 420000, targetAccount: '고정비 통장', isCompleted: false, history: { '2026-04': 420000, '2026-05': 420000, '2026-06': 420000, '2026-07': 420000, '2026-08': 420000, '2026-09': 420000 } },
-      { id: 'tx_6', type: 'EXPENSE', isFixed: true, category: '구독료', title: 'OTT 및 통신 구독료', estimatedAmount: 45000, actualAmount: 45000, targetAccount: '고정비 통장', isCompleted: false, history: { '2026-04': 45000, '2026-05': 45000, '2026-06': 45000, '2026-07': 45000, '2026-08': 45000, '2026-09': 45000 } },
+      { id: 'tx_3', type: 'EXPENSE', isFixed: true, category: '보험료', title: '실손/건강 보험료', estimatedAmount: 180000, actualAmount: 180000, targetAccount: '고정비 통장', isCompleted: false, history: { '2026-09': 180000 } },
+      { id: 'tx_4', type: 'EXPENSE', isFixed: true, category: '대출이자', title: '주택담보대출 이자', estimatedAmount: 420000, actualAmount: 420000, targetAccount: '고정비 통장', isCompleted: false, history: { '2026-09': 420000 } },
       
       // 변동 지출 (EXPENSE - VARIABLE)
-      { id: 'tx_7', type: 'EXPENSE', isFixed: false, category: '관리비', title: '아파트 관리비', estimatedAmount: 190000, actualAmount: 215000, targetAccount: '공과금 통장', isCompleted: false, history: { '2026-04': 195000, '2026-05': 180000, '2026-06': 182000, '2026-07': 185000, '2026-08': 240000, '2026-09': 215000 } },
-      { id: 'tx_8', type: 'EXPENSE', isFixed: false, category: '가스비', title: '도시가스 난방비', estimatedAmount: 35000, actualAmount: 28000, targetAccount: '공과금 통장', isCompleted: false, history: { '2026-04': 65000, '2026-05': 32000, '2026-06': 21000, '2026-07': 18000, '2026-08': 16000, '2026-09': 28000 } },
-      { id: 'tx_9', type: 'EXPENSE', isFixed: false, category: '주유비', title: '차량 주유비', estimatedAmount: 150000, actualAmount: 160000, targetAccount: '공과금 통장', isCompleted: false, history: { '2026-04': 150000, '2026-05': 145000, '2026-06': 160000, '2026-07': 140000, '2026-08': 150000, '2026-09': 160000 } },
-      { id: 'tx_10', type: 'EXPENSE', isFixed: false, category: '카드대금', title: '생활비 신용카드 대금', estimatedAmount: 800000, actualAmount: 850000, targetAccount: '카드대금 통장', isCompleted: false, history: { '2026-04': 800000, '2026-05': 820000, '2026-06': 790000, '2026-07': 780000, '2026-08': 820000, '2026-09': 850000 } },
+      { id: 'tx_7', type: 'EXPENSE', isFixed: false, category: '관리비', title: '아파트 관리비', estimatedAmount: 190000, actualAmount: 215000, targetAccount: '고정비 통장', isCompleted: false, history: { '2026-09': 215000 } },
+      { id: 'tx_10', type: 'EXPENSE', isFixed: false, category: '카드대금', title: '생활비 신용카드 대금', estimatedAmount: 800000, actualAmount: 850000, targetAccount: '생활비 통장', isCompleted: false, history: { '2026-09': 850000 } },
     ];
 
     const calculateAdjustedPayday = (year, month) => {
@@ -125,8 +124,8 @@
     };
 
     function PaydayApp() {
-      const [transactions, setTransactions] = useState(() => safeStorage.getItem('payday_transactions_v10', DEFAULT_TRANSACTIONS));
-      const [accounts, setAccounts] = useState(() => safeStorage.getItem('payday_accounts_v10', DEFAULT_ACCOUNTS));
+      const [transactions, setTransactions] = useState(() => safeStorage.getItem('payday_transactions_v11', DEFAULT_TRANSACTIONS));
+      const [accounts, setAccounts] = useState(() => safeStorage.getItem('payday_accounts_v11', DEFAULT_ACCOUNTS));
       const [sheetUrl, setSheetUrl] = useState(() => {
         try {
           return localStorage.getItem('payday_sheet_url') || DEFAULT_SHEET_URL;
@@ -183,15 +182,33 @@
 
       const monthKey = useMemo(() => `${currentYear}-${String(currentMonth).padStart(2, '0')}`, [currentYear, currentMonth]);
 
+      // 비정기 수입/투자 항목 판별 함수 (상여금, 인센티브, 명절보너스 등)
+      const isIrregularTx = (t) => {
+        if (!t) return false;
+        const cat = t.category || '';
+        const title = t.title || '';
+        return cat === '상여금' || cat === '인센티브' || 
+               title.includes('상여금') || title.includes('인센티브') || 
+               title.includes('보너스') || title.includes('성과급');
+      };
+
+      // 월별 금액 연산 헬퍼 (월별 데이터 독립성 보장)
       const getTxAmountForMonth = (t, ym) => {
+        // 해당 월에 명시적인 수정/기록 내역이 있는 경우
         if (t.history && t.history[ym] !== undefined) {
           return Number(t.history[ym]) || 0;
         }
+        // 현재 선택한 연월인 경우
         if (ym === monthKey) {
           return Number(t.actualAmount) || Number(t.estimatedAmount) || 0;
         }
+        // 비정기 항목(상여금, 인센티브)은 명시적 기록이 없는 과거/미래 달에는 0원 처리
+        if (isIrregularTx(t)) {
+          return 0;
+        }
+        // 일반 고정 정액 항목인 경우에만 기본 금액 반환
         if (t.isFixed) {
-          return Number(t.estimatedAmount) || 0;
+          return Number(t.estimatedAmount) || Number(t.actualAmount) || 0;
         }
         return 0;
       };
@@ -305,8 +322,8 @@
       }, []);
 
       useEffect(() => {
-        safeStorage.setItem('payday_transactions_v10', transactions);
-        safeStorage.setItem('payday_accounts_v10', accounts);
+        safeStorage.setItem('payday_transactions_v11', transactions);
+        safeStorage.setItem('payday_accounts_v11', accounts);
 
         if (!isInitialMount.current && sheetUrl && sheetUrl.startsWith('http')) {
           const timer = setTimeout(() => {
@@ -711,6 +728,7 @@
                               <div className="text-[9px] text-slate-400 mt-0.5">원 ({currentMonth}월)</div>
                             </div>
 
+                            {/* 슬림 세로 배치 수정/삭제 버튼 */}
                             <div className="flex flex-col justify-center space-y-1 pl-1 border-l border-slate-100">
                               <button 
                                 onClick={() => setEditTx(tx)}
@@ -842,12 +860,13 @@
                   let ytdAccumulated = 0;
                   let lifetimeAccumulated = 0;
 
-                  const isOvertimeAccount = acc.name.includes('초과근무') || acc.id === 'acc_4';
+                  const isOvertimeAccount = acc.name.includes('초과근무') || acc.id === 'acc_7';
 
                   if (acc.isAccumulating && acc.startDate) {
                     const startYear = parseInt(acc.startDate.substring(0, 4)) || 2024;
                     const startMonth = parseInt(acc.startDate.substring(5, 7)) || 1;
 
+                    // 1. 올해 실적 누적 (1월 ~ 현재월)
                     for (let m = 1; m <= currentMonth; m++) {
                       const ym = `${currentYear}-${String(m).padStart(2, '0')}`;
                       if (isOvertimeAccount) {
@@ -855,32 +874,25 @@
                         ytdAccumulated += mFin.overtimeIncome;
                       } else {
                         accItems.forEach(t => {
-                          // 비정기 수입/투자 항목(상여금, 인센티브 등)은 기록이 있는 달에만 반영
-                          if (t.history && t.history[ym] !== undefined) {
-                            ytdAccumulated += Number(t.history[ym]) || 0;
-                          } else if (t.isFixed) {
-                            ytdAccumulated += Number(t.estimatedAmount) || 0;
-                          }
+                          ytdAccumulated += getTxAmountForMonth(t, ym);
                         });
                       }
                     }
 
+                    // 2. 지속 전체 누적액 (기산일 ~ 현재월)
                     for (let y = startYear; y <= currentYear; y++) {
                       const mStart = (y === startYear) ? startMonth : 1;
                       const mEnd = (y === currentYear) ? currentMonth : 12;
 
                       for (let m = mStart; m <= mEnd; m++) {
+                        if (y === currentYear && m > currentMonth) break; // 현재월까지만 합산
                         const ym = `${y}-${String(m).padStart(2, '0')}`;
                         if (isOvertimeAccount) {
                           const mFin = getMonthFinancials(ym);
                           lifetimeAccumulated += mFin.overtimeIncome;
                         } else {
                           accItems.forEach(t => {
-                            if (t.history && t.history[ym] !== undefined) {
-                              lifetimeAccumulated += Number(t.history[ym]) || 0;
-                            } else if (t.isFixed) {
-                              lifetimeAccumulated += Number(t.estimatedAmount) || 0;
-                            }
+                            lifetimeAccumulated += getTxAmountForMonth(t, ym);
                           });
                         }
                       }
@@ -1441,7 +1453,7 @@ function doPost(e) {
       const [title, setTitle] = useState('');
       const [category, setCategory] = useState('공과금');
       const [amount, setAmount] = useState('');
-      const [targetAccount, setTargetAccount] = useState(accounts[0]?.name || '공과금 통장');
+      const [targetAccount, setTargetAccount] = useState(accounts[0]?.name || '고정비 통장');
 
       const handleSubmit = (e) => {
         e.preventDefault();
@@ -1571,7 +1583,7 @@ function doPost(e) {
     function EditTransactionModal({ editTx, accounts, onSave, onClose }) {
       const [title, setTitle] = useState(editTx.title || '');
       const [category, setCategory] = useState(editTx.category || '공과금');
-      const [targetAccount, setTargetAccount] = useState(editTx.targetAccount || accounts[0]?.name || '공과금 통장');
+      const [targetAccount, setTargetAccount] = useState(editTx.targetAccount || accounts[0]?.name || '고정비 통장');
       const [isFixed, setIsFixed] = useState(editTx.isFixed !== undefined ? editTx.isFixed : true);
 
       const handleSubmit = (e) => {
@@ -1786,9 +1798,17 @@ function doPost(e) {
         if (!canvasRef.current) return;
         const ctx = canvasRef.current.getContext('2d');
 
+        const isIrregular = (t) => {
+          if (!t) return false;
+          const cat = t.category || '';
+          const title = t.title || '';
+          return cat === '상여금' || cat === '인센티브' || title.includes('상여금') || title.includes('인센티브');
+        };
+
         const getMonthVal = (t, mKey) => {
           if (t.history && t.history[mKey] !== undefined) return Number(t.history[mKey]) || 0;
           if (mKey === monthKey) return Number(t.actualAmount) || 0;
+          if (isIrregular(t)) return 0;
           if (t.isFixed) return Number(t.estimatedAmount) || 0;
           return 0;
         };
