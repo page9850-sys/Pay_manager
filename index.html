@@ -35,6 +35,13 @@
       -ms-overflow-style: none;
       scrollbar-width: none;
     }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fadeIn {
+      animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
   </style>
 </head>
 <body class="text-slate-800 antialiased selection:bg-indigo-500 selection:text-white">
@@ -45,7 +52,27 @@
 
     // 💡 [깃허브 배포용 설정] 아래 따옴표 안에 작성하신 Google Apps Script Web App URL을 붙여넣으시면
     // 앱 시작 시 자동 데이터 로드 및 내용 변경 시 실시간 자동 백업이 상시 작동합니다.
-    const DEFAULT_SHEET_URL = "https://script.google.com/macros/s/AKfycbycIVEh0BeZiGXT2dRAjDEg3wZgxs5tYVItC7PQW2mThCiYdW4fimhZMUfmNCywUrOg/exec"; 
+    const DEFAULT_SHEET_URL = ""; 
+
+    // 안전한 로컬스토리지 입출력 헬퍼 (보안 프레임 차단 오류 방지)
+    const safeStorage = {
+      getItem: (key, fallback) => {
+        try {
+          const val = localStorage.getItem(key);
+          return val ? JSON.parse(val) : fallback;
+        } catch (e) {
+          console.warn('LocalStorage read error:', e);
+          return fallback;
+        }
+      },
+      setItem: (key, value) => {
+        try {
+          localStorage.setItem(key, JSON.stringify(value));
+        } catch (e) {
+          console.warn('LocalStorage write error:', e);
+        }
+      }
+    };
 
     // 초기 샘플 통장 데이터
     const DEFAULT_ACCOUNTS = [
@@ -58,8 +85,10 @@
 
     const DEFAULT_TRANSACTIONS = [
       // 수입 (INCOME)
-      { id: 'tx_1', type: 'INCOME', isFixed: true, category: '급여', title: '기본 급여 수입', estimatedAmount: 6516000, actualAmount: 6516000, targetAccount: '초과근무/자산 통장', isCompleted: true },
-      { id: 'tx_2', type: 'INCOME', isFixed: false, category: '월세', title: '월세 임대 수입', estimatedAmount: 911000, actualAmount: 911000, targetAccount: '초과근무/자산 통장', isCompleted: false },
+      { id: 'tx_1', type: 'INCOME', isFixed: true, category: '급여', title: '기본 급여 수입', estimatedAmount: 6516000, actualAmount: 6516000, targetAccount: '초과근무/자산 통장', isCompleted: true, history: { '2026-09': 6516000 } },
+      { id: 'tx_2', type: 'INCOME', isFixed: false, category: '월세', title: '월세 임대 수입', estimatedAmount: 911000, actualAmount: 911000, targetAccount: '초과근무/자산 통장', isCompleted: false, history: { '2026-09': 911000 } },
+      { id: 'tx_bonus', type: 'INCOME', isFixed: false, category: '상여금', title: '설/추석 명절 상여금', estimatedAmount: 0, actualAmount: 0, targetAccount: '연금저축/투자비 통장', isCompleted: false, history: { '2026-09': 0 } },
+      { id: 'tx_incentive', type: 'INCOME', isFixed: false, category: '인센티브', title: '비정기 성과급/인센티브', estimatedAmount: 0, actualAmount: 0, targetAccount: '연금저축/투자비 통장', isCompleted: false, history: { '2026-09': 0 } },
       
       // 투자 (INVESTMENT)
       { id: 'tx_inv1', type: 'INVESTMENT', isFixed: true, category: '연금', title: '개인연금저축 펀드', estimatedAmount: 300000, actualAmount: 300000, targetAccount: '연금저축/투자비 통장', isCompleted: true, history: { '2026-04': 300000, '2026-05': 300000, '2026-06': 300000, '2026-07': 300000, '2026-08': 300000, '2026-09': 300000 } },
@@ -96,19 +125,14 @@
     };
 
     function PaydayApp() {
-      const [transactions, setTransactions] = useState(() => {
-        const saved = localStorage.getItem('payday_transactions_v7');
-        return saved ? JSON.parse(saved) : DEFAULT_TRANSACTIONS;
-      });
-
-      const [accounts, setAccounts] = useState(() => {
-        const saved = localStorage.getItem('payday_accounts_v7');
-        return saved ? JSON.parse(saved) : DEFAULT_ACCOUNTS;
-      });
-
+      const [transactions, setTransactions] = useState(() => safeStorage.getItem('payday_transactions_v10', DEFAULT_TRANSACTIONS));
+      const [accounts, setAccounts] = useState(() => safeStorage.getItem('payday_accounts_v10', DEFAULT_ACCOUNTS));
       const [sheetUrl, setSheetUrl] = useState(() => {
-        const saved = localStorage.getItem('payday_sheet_url');
-        return saved || DEFAULT_SHEET_URL;
+        try {
+          return localStorage.getItem('payday_sheet_url') || DEFAULT_SHEET_URL;
+        } catch(e) {
+          return DEFAULT_SHEET_URL;
+        }
       });
 
       const [isSyncing, setIsSyncing] = useState(false);
@@ -124,6 +148,7 @@
       const [showAccountModal, setShowAccountModal] = useState(false);
       const [showSheetModal, setShowSheetModal] = useState(false);
       const [showAddTxModal, setShowAddTxModal] = useState(false);
+      const [editTx, setEditTx] = useState(null);
       const [deleteConfirmId, setDeleteConfirmId] = useState(null);
       const [toastMessage, setToastMessage] = useState(null);
 
@@ -162,7 +187,13 @@
         if (t.history && t.history[ym] !== undefined) {
           return Number(t.history[ym]) || 0;
         }
-        return Number(t.actualAmount) || Number(t.estimatedAmount) || 0;
+        if (ym === monthKey) {
+          return Number(t.actualAmount) || Number(t.estimatedAmount) || 0;
+        }
+        if (t.isFixed) {
+          return Number(t.estimatedAmount) || 0;
+        }
+        return 0;
       };
 
       const getTxAmount = (t) => getTxAmountForMonth(t, monthKey);
@@ -172,7 +203,6 @@
         setTimeout(() => setToastMessage(null), 3500);
       };
 
-      // 특정 연월(ym)의 수입, 지출, 초과근무재원을 산출하는 헬퍼 함수
       const getMonthFinancials = (ym) => {
         const totalInc = transactions
           .filter(t => t.type === 'INCOME')
@@ -182,8 +212,20 @@
           .filter(t => t.type === 'INCOME' && (t.category === '월세' || t.title.includes('월세') || t.title.includes('임대')))
           .reduce((sum, t) => sum + getTxAmountForMonth(t, ym), 0);
 
+        const bonusInc = transactions
+          .filter(t => t.type === 'INCOME' && (t.category === '상여금' || t.title.includes('상여금') || t.title.includes('보너스')))
+          .reduce((sum, t) => sum + getTxAmountForMonth(t, ym), 0);
+
+        const incentiveInc = transactions
+          .filter(t => t.type === 'INCOME' && (t.category === '인센티브' || t.title.includes('인센티브') || t.title.includes('성과급')))
+          .reduce((sum, t) => sum + getTxAmountForMonth(t, ym), 0);
+
         const baseInc = transactions
-          .filter(t => t.type === 'INCOME' && !(t.category === '월세' || t.title.includes('월세') || t.title.includes('임대')))
+          .filter(t => t.type === 'INCOME' && !(
+            t.category === '월세' || t.title.includes('월세') || t.title.includes('임대') ||
+            t.category === '상여금' || t.title.includes('상여금') || t.title.includes('보너스') ||
+            t.category === '인센티브' || t.title.includes('인센티브') || t.title.includes('성과급')
+          ))
           .reduce((sum, t) => sum + getTxAmountForMonth(t, ym), 0);
 
         const fixedExp = transactions
@@ -206,6 +248,8 @@
           totalIncome: totalInc,
           baseIncome: baseInc,
           rentalIncome: rentalInc,
+          bonusIncome: bonusInc,
+          incentiveIncome: incentiveInc,
           fixedExpense: fixedExp,
           variableExpense: varExp,
           investmentTotal: invTotal,
@@ -215,7 +259,6 @@
         };
       };
 
-      // 구글 시트 연동 로직
       const handleSheetSync = async (type = 'EXPORT', quiet = false) => {
         if (!sheetUrl) {
           if (!quiet) {
@@ -262,8 +305,8 @@
       }, []);
 
       useEffect(() => {
-        localStorage.setItem('payday_transactions_v7', JSON.stringify(transactions));
-        localStorage.setItem('payday_accounts_v7', JSON.stringify(accounts));
+        safeStorage.setItem('payday_transactions_v10', transactions);
+        safeStorage.setItem('payday_accounts_v10', accounts);
 
         if (!isInitialMount.current && sheetUrl && sheetUrl.startsWith('http')) {
           const timer = setTimeout(() => {
@@ -277,13 +320,13 @@
 
       useEffect(() => {
         if (sheetUrl) {
-          localStorage.setItem('payday_sheet_url', sheetUrl);
+          try { localStorage.setItem('payday_sheet_url', sheetUrl); } catch(e){}
           setSyncStatus('connected');
         }
       }, [sheetUrl]);
 
       const adjustedPayday = useMemo(() => calculateAdjustedPayday(currentYear, currentMonth), [currentYear, currentMonth]);
-      const today = new Date(2026, 8, 11);
+      const today = new Date(2026, 8, 23);
       const timeDiff = adjustedPayday.getTime() - today.getTime();
       const dDay = Math.ceil(timeDiff / (1000 * 3600 * 24));
 
@@ -365,6 +408,7 @@
             </div>
           )}
 
+          {/* Header */}
           <header className="bg-slate-900 text-white p-4 sticky top-0 z-30 shadow-md">
             <div className="flex justify-between items-center">
               <div className="flex items-center space-x-2">
@@ -402,7 +446,7 @@
           </header>
 
           <main className="p-4 space-y-4 flex-1">
-            {/* 월별 선택 컨트롤 바 */}
+            {/* Month Navigation */}
             <div className="flex items-center justify-between bg-white p-2.5 rounded-2xl border border-slate-200 shadow-sm">
               <button 
                 onClick={handlePrevMonth}
@@ -436,7 +480,7 @@
               </button>
             </div>
 
-            {/* 히어로 카드 */}
+            {/* Hero Card */}
             <div className="bg-gradient-to-br from-indigo-50/90 via-slate-50 to-blue-50/80 border border-indigo-100/90 rounded-2xl p-5 shadow-sm relative overflow-hidden">
               <div className="absolute top-0 right-0 w-36 h-36 bg-indigo-500/5 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none"></div>
 
@@ -460,7 +504,7 @@
 
               <div className="bg-white/80 rounded-xl p-3 backdrop-blur border border-slate-200/80 shadow-xs space-y-2">
                 <div className="flex justify-between text-xs">
-                  <span className="text-slate-600 font-medium">총 수입 (급여+월세)</span>
+                  <span className="text-slate-600 font-medium">총 수입 (급여+월세+상여+인센티브)</span>
                   <span className="font-bold text-emerald-600">+{financialSummary.totalIncome.toLocaleString()} 원</span>
                 </div>
 
@@ -483,6 +527,23 @@
                   </div>
                 </div>
 
+                {(financialSummary.bonusIncome > 0 || financialSummary.incentiveIncome > 0) && (
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    {financialSummary.bonusIncome > 0 && (
+                      <div className="bg-purple-50/70 rounded-lg p-2 border border-purple-100 flex justify-between items-center col-span-1">
+                        <span className="text-purple-700 font-bold">🎁 상여금</span>
+                        <span className="font-extrabold text-purple-900">+{financialSummary.bonusIncome.toLocaleString()}원</span>
+                      </div>
+                    )}
+                    {financialSummary.incentiveIncome > 0 && (
+                      <div className="bg-blue-50/70 rounded-lg p-2 border border-blue-100 flex justify-between items-center col-span-1">
+                        <span className="text-blue-700 font-bold">🚀 인센티브</span>
+                        <span className="font-extrabold text-blue-900">+{financialSummary.incentiveIncome.toLocaleString()}원</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="flex justify-between text-xs pt-1 border-t border-slate-100">
                   <span className="text-slate-600 font-medium">필수 선출금 (지출+투자)</span>
                   <span className="font-bold text-rose-500">-{financialSummary.totalEssential.toLocaleString()} 원</span>
@@ -503,7 +564,7 @@
               </div>
             </div>
 
-            {/* 메인 탭 */}
+            {/* Navigation Tabs */}
             <div className="flex space-x-1 bg-slate-200/80 p-1 rounded-xl text-xs font-semibold no-scrollbar overflow-x-auto">
               <button 
                 onClick={() => setActiveTab('MAIN_LIST')}
@@ -537,7 +598,7 @@
               </button>
             </div>
 
-            {/* 전체 내역 탭 */}
+            {/* Tab 1: Main Transaction List */}
             {activeTab === 'MAIN_LIST' && (
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
@@ -603,11 +664,11 @@
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-3">
+                          <div className="flex items-center space-x-2.5 min-w-0 flex-1 mr-2">
                             {isBatchMode ? (
                               <button 
                                 onClick={() => toggleBatchSelect(tx.id)}
-                                className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all ${
+                                className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 transition-all ${
                                   isBatchSelected ? 'bg-amber-500 text-white shadow-sm ring-2 ring-amber-300' : 'border-2 border-slate-300 text-transparent hover:border-amber-400'
                                 }`}
                               >
@@ -616,7 +677,7 @@
                             ) : (
                               <button 
                                 onClick={() => toggleComplete(tx.id)}
-                                className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all ${
+                                className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 transition-all ${
                                   tx.isCompleted ? 'bg-emerald-500 text-white shadow-sm' : 'border-2 border-slate-300 text-transparent hover:border-indigo-400'
                                 }`}
                               >
@@ -624,37 +685,48 @@
                               </button>
                             )}
 
-                            <div>
+                            <div className="min-w-0 flex-1">
                               <div className="flex items-center space-x-1.5">
-                                <span className="font-bold text-slate-800 text-sm">{tx.title}</span>
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                                <span className="font-bold text-slate-800 text-xs sm:text-sm truncate">{tx.title}</span>
+                                <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium shrink-0 ${
                                   tx.type === 'INCOME' ? 'bg-emerald-100 text-emerald-700' : tx.type === 'INVESTMENT' ? 'bg-purple-100 text-purple-700' : tx.isFixed ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'
                                 }`}>
                                   {tx.category}
                                 </span>
                               </div>
-                              <div className="text-[11px] text-slate-500 flex items-center space-x-2 mt-0.5">
-                                <span><i className="fa-regular fa-building-columns text-[10px] mr-1"></i>{tx.targetAccount}</span>
+                              <div className="text-[10px] text-slate-500 flex items-center space-x-1 mt-0.5 truncate">
+                                <span className="truncate"><i className="fa-regular fa-building-columns text-[9px] mr-1"></i>{tx.targetAccount}</span>
                               </div>
                             </div>
                           </div>
 
-                          <div className="flex items-center space-x-2">
+                          <div className="flex items-center space-x-1.5 shrink-0">
                             <div className="text-right">
                               <input 
                                 type="number"
                                 value={currentAmount}
                                 onChange={(e) => updateAmount(tx.id, e.target.value)}
-                                className="w-24 text-right font-extrabold text-sm text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                className="w-20 sm:w-24 text-right font-extrabold text-xs text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                               />
-                              <div className="text-[10px] text-slate-400">원 ({currentMonth}월)</div>
+                              <div className="text-[9px] text-slate-400 mt-0.5">원 ({currentMonth}월)</div>
                             </div>
-                            <button 
-                              onClick={() => setDeleteConfirmId(tx.id)}
-                              className="text-slate-300 hover:text-rose-500 p-1.5 transition-colors"
-                            >
-                              <i className="fa-solid fa-trash-can text-xs"></i>
-                            </button>
+
+                            <div className="flex flex-col justify-center space-y-1 pl-1 border-l border-slate-100">
+                              <button 
+                                onClick={() => setEditTx(tx)}
+                                className="text-slate-400 hover:text-indigo-600 p-0.5 leading-none transition-colors"
+                                title="항목 수정"
+                              >
+                                <i className="fa-solid fa-pen-to-square text-[11px]"></i>
+                              </button>
+                              <button 
+                                onClick={() => setDeleteConfirmId(tx.id)}
+                                className="text-slate-400 hover:text-rose-500 p-0.5 leading-none transition-colors"
+                                title="항목 삭제"
+                              >
+                                <i className="fa-solid fa-trash-can text-[11px]"></i>
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -664,7 +736,7 @@
               </div>
             )}
 
-            {/* 고정비 3개월 탭 */}
+            {/* Tab 2: Fixed Expenses 3M */}
             {activeTab === 'FIXED_3M' && (
               <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3">
                 <div className="flex justify-between items-center border-b pb-2">
@@ -685,19 +757,19 @@
                     .map(item => (
                       <div key={item.id} className="grid grid-cols-12 items-center px-1 py-2 border-b border-slate-100 text-center font-medium">
                         <span className="col-span-4 text-left pl-1 font-bold text-slate-800 truncate text-[11px]">{item.title}</span>
-                        <span className="col-span-2 text-slate-400 text-[10px] tracking-tight">{(item.history?.[m1Key] || item.actualAmount).toLocaleString()}</span>
-                        <span className="col-span-2 text-slate-400 text-[10px] tracking-tight">{(item.history?.[m2Key] || item.actualAmount).toLocaleString()}</span>
-                        <span className="col-span-4 text-right pr-1 font-extrabold text-indigo-600 text-[11px] tracking-tight">{(item.history?.[m3Key] || item.actualAmount).toLocaleString()}원</span>
+                        <span className="col-span-2 text-slate-400 text-[10px] tracking-tight">{getTxAmountForMonth(item, m1Key).toLocaleString()}</span>
+                        <span className="col-span-2 text-slate-400 text-[10px] tracking-tight">{getTxAmountForMonth(item, m2Key).toLocaleString()}</span>
+                        <span className="col-span-4 text-right pr-1 font-extrabold text-indigo-600 text-[11px] tracking-tight">{getTxAmountForMonth(item, m3Key).toLocaleString()}원</span>
                       </div>
                     ))}
 
                   <div className="grid grid-cols-12 items-center px-1 py-2.5 bg-indigo-50/60 rounded-xl font-bold text-indigo-900 mt-2">
                     <span className="col-span-4 text-left pl-1 text-[11px]">고정비 월 합계</span>
                     <span className="col-span-2 text-center text-[10px] text-indigo-400 tracking-tight">
-                      {transactions.filter(t => t.type === 'EXPENSE' && t.isFixed).reduce((sum, t) => sum + (t.history?.[m1Key] || t.actualAmount), 0).toLocaleString()}
+                      {transactions.filter(t => t.type === 'EXPENSE' && t.isFixed).reduce((sum, t) => sum + getTxAmountForMonth(t, m1Key), 0).toLocaleString()}
                     </span>
                     <span className="col-span-2 text-center text-[10px] text-indigo-400 tracking-tight">
-                      {transactions.filter(t => t.type === 'EXPENSE' && t.isFixed).reduce((sum, t) => sum + (t.history?.[m2Key] || t.actualAmount), 0).toLocaleString()}
+                      {transactions.filter(t => t.type === 'EXPENSE' && t.isFixed).reduce((sum, t) => sum + getTxAmountForMonth(t, m2Key), 0).toLocaleString()}
                     </span>
                     <span className="col-span-4 text-right pr-1 text-xs font-black text-indigo-600 tracking-tight">
                       {financialSummary.fixedExpense.toLocaleString()}원
@@ -707,7 +779,7 @@
               </div>
             )}
 
-            {/* 변동비 3개월 탭 */}
+            {/* Tab 3: Variable Expenses 3M */}
             {activeTab === 'VAR_3M' && (
               <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3">
                 <div className="flex justify-between items-center border-b pb-2">
@@ -728,19 +800,19 @@
                     .map(item => (
                       <div key={item.id} className="grid grid-cols-12 items-center px-1 py-2 border-b border-slate-100 text-center font-medium">
                         <span className="col-span-4 text-left pl-1 font-bold text-slate-800 truncate text-[11px]">{item.title}</span>
-                        <span className="col-span-2 text-slate-400 text-[10px] tracking-tight">{(item.history?.[m1Key] || item.actualAmount).toLocaleString()}</span>
-                        <span className="col-span-2 text-slate-400 text-[10px] tracking-tight">{(item.history?.[m2Key] || item.actualAmount).toLocaleString()}</span>
-                        <span className="col-span-4 text-right pr-1 font-extrabold text-amber-600 text-[11px] tracking-tight">{(item.history?.[m3Key] || item.actualAmount).toLocaleString()}원</span>
+                        <span className="col-span-2 text-slate-400 text-[10px] tracking-tight">{getTxAmountForMonth(item, m1Key).toLocaleString()}</span>
+                        <span className="col-span-2 text-slate-400 text-[10px] tracking-tight">{getTxAmountForMonth(item, m2Key).toLocaleString()}</span>
+                        <span className="col-span-4 text-right pr-1 font-extrabold text-amber-600 text-[11px] tracking-tight">{getTxAmountForMonth(item, m3Key).toLocaleString()}원</span>
                       </div>
                     ))}
 
                   <div className="grid grid-cols-12 items-center px-1 py-2.5 bg-amber-50/60 rounded-xl font-bold text-amber-900 mt-2">
                     <span className="col-span-4 text-left pl-1 text-[11px]">변동비 월 합계</span>
                     <span className="col-span-2 text-center text-[10px] text-amber-600/70 tracking-tight">
-                      {transactions.filter(t => t.type === 'EXPENSE' && !t.isFixed).reduce((sum, t) => sum + (t.history?.[m1Key] || t.actualAmount), 0).toLocaleString()}
+                      {transactions.filter(t => t.type === 'EXPENSE' && !t.isFixed).reduce((sum, t) => sum + getTxAmountForMonth(t, m1Key), 0).toLocaleString()}
                     </span>
                     <span className="col-span-2 text-center text-[10px] text-amber-600/70 tracking-tight">
-                      {transactions.filter(t => t.type === 'EXPENSE' && !t.isFixed).reduce((sum, t) => sum + (t.history?.[m2Key] || t.actualAmount), 0).toLocaleString()}
+                      {transactions.filter(t => t.type === 'EXPENSE' && !t.isFixed).reduce((sum, t) => sum + getTxAmountForMonth(t, m2Key), 0).toLocaleString()}
                     </span>
                     <span className="col-span-4 text-right pr-1 text-xs font-black text-amber-600 tracking-tight">
                       {financialSummary.variableExpense.toLocaleString()}원
@@ -750,7 +822,7 @@
               </div>
             )}
 
-            {/* 통장 쪼개기 탭 */}
+            {/* Tab 4: Envelope Splitting */}
             {activeTab === 'ENVELOPES' && (
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
@@ -776,7 +848,6 @@
                     const startYear = parseInt(acc.startDate.substring(0, 4)) || 2024;
                     const startMonth = parseInt(acc.startDate.substring(5, 7)) || 1;
 
-                    // 1) 올해(currentYear) 1월부터 currentMonth까지 누적
                     for (let m = 1; m <= currentMonth; m++) {
                       const ym = `${currentYear}-${String(m).padStart(2, '0')}`;
                       if (isOvertimeAccount) {
@@ -784,12 +855,16 @@
                         ytdAccumulated += mFin.overtimeIncome;
                       } else {
                         accItems.forEach(t => {
-                          ytdAccumulated += getTxAmountForMonth(t, ym);
+                          // 비정기 수입/투자 항목(상여금, 인센티브 등)은 기록이 있는 달에만 반영
+                          if (t.history && t.history[ym] !== undefined) {
+                            ytdAccumulated += Number(t.history[ym]) || 0;
+                          } else if (t.isFixed) {
+                            ytdAccumulated += Number(t.estimatedAmount) || 0;
+                          }
                         });
                       }
                     }
 
-                    // 2) 기산일(startYear.startMonth)부터 currentYear.currentMonth까지 지속 누적
                     for (let y = startYear; y <= currentYear; y++) {
                       const mStart = (y === startYear) ? startMonth : 1;
                       const mEnd = (y === currentYear) ? currentMonth : 12;
@@ -801,7 +876,11 @@
                           lifetimeAccumulated += mFin.overtimeIncome;
                         } else {
                           accItems.forEach(t => {
-                            lifetimeAccumulated += getTxAmountForMonth(t, ym);
+                            if (t.history && t.history[ym] !== undefined) {
+                              lifetimeAccumulated += Number(t.history[ym]) || 0;
+                            } else if (t.isFixed) {
+                              lifetimeAccumulated += Number(t.estimatedAmount) || 0;
+                            }
                           });
                         }
                       }
@@ -905,7 +984,7 @@
               </div>
             )}
 
-            {/* 지출 추이 탭 */}
+            {/* Tab 5: Trends */}
             {activeTab === 'TRENDS' && (
               <div className="space-y-4">
                 <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3">
@@ -913,7 +992,7 @@
                     <h3 className="font-extrabold text-sm text-slate-800">📈 변동 지출 항목별 최근 6개월 추이</h3>
                     <span className="text-[10px] text-indigo-600 bg-indigo-50 font-bold px-2 py-0.5 rounded">실시간 데이터 연동</span>
                   </div>
-                  <TrendChart transactions={transactions} currentYear={currentYear} currentMonth={currentMonth} />
+                  <TrendChart transactions={transactions} currentYear={currentYear} currentMonth={currentMonth} monthKey={monthKey} />
                 </div>
 
                 <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3">
@@ -921,13 +1000,13 @@
                     <h3 className="font-extrabold text-sm text-slate-800">📊 최근 6개월 수입 • 지출 • 투자 종합 추이</h3>
                     <span className="text-[10px] text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded">3대 자금 흐름</span>
                   </div>
-                  <IncomeExpenseInvestChart transactions={transactions} currentYear={currentYear} currentMonth={currentMonth} />
+                  <IncomeExpenseInvestChart transactions={transactions} currentYear={currentYear} currentMonth={currentMonth} monthKey={monthKey} />
                 </div>
               </div>
             )}
           </main>
 
-          {/* 모달 레이어 모음 */}
+          {/* Modals */}
           {showRoutineModal && (
             <RoutineWizard 
               transactions={transactions} 
@@ -936,6 +1015,7 @@
               safeToSpend={financialSummary.safeToSpend}
               overtimeIncome={financialSummary.overtimeIncome}
               currentMonth={currentMonth}
+              monthKey={monthKey}
             />
           )}
 
@@ -966,6 +1046,19 @@
                 showToast('새 항목이 추가되었습니다.');
               }} 
               onClose={() => setShowAddTxModal(false)} 
+            />
+          )}
+
+          {editTx && (
+            <EditTransactionModal 
+              editTx={editTx}
+              accounts={accounts} 
+              onSave={(updatedTx) => {
+                setTransactions(prev => prev.map(t => t.id === updatedTx.id ? updatedTx : t));
+                setEditTx(null);
+                showToast('항목 정보가 수정되었습니다.');
+              }} 
+              onClose={() => setEditTx(null)} 
             />
           )}
 
@@ -1000,14 +1093,20 @@
       );
     }
 
-    function RoutineWizard({ transactions, setTransactions, onClose, safeToSpend, overtimeIncome, currentMonth }) {
+    function RoutineWizard({ transactions, setTransactions, onClose, safeToSpend, overtimeIncome, currentMonth, monthKey }) {
       const [step, setStep] = useState(1);
       const incomeItems = transactions.filter(t => t.type === 'INCOME');
       const varExpenseItems = transactions.filter(t => t.type === 'EXPENSE' && !t.isFixed);
 
       const updateItemAmount = (id, val) => {
         const num = Number(val) || 0;
-        setTransactions(prev => prev.map(t => t.id === id ? { ...t, actualAmount: num } : t));
+        setTransactions(prev => prev.map(t => {
+          if (t.id === id) {
+            const updatedHistory = { ...(t.history || {}), [monthKey]: num };
+            return { ...t, actualAmount: num, history: updatedHistory };
+          }
+          return t;
+        }));
       };
 
       return (
@@ -1030,7 +1129,7 @@
             {step === 1 && (
               <div className="space-y-3">
                 <p className="text-xs text-slate-500">
-                  이번 달 실제 입금된 기본 급여 및 월세 임대 수입 금액을 확정해주세요.
+                  이번 달 실제 입금된 기본 급여, 월세 수입, 상여금 및 인센티브를 확정해주세요.
                 </p>
 
                 <div className="space-y-2">
@@ -1042,7 +1141,7 @@
                       </div>
                       <input 
                         type="number"
-                        value={item.actualAmount}
+                        value={item.history?.[monthKey] !== undefined ? item.history[monthKey] : item.actualAmount}
                         onChange={(e) => updateItemAmount(item.id, e.target.value)}
                         className="w-28 text-right font-extrabold text-sm border border-slate-300 rounded-lg p-1.5 focus:ring-2 focus:ring-indigo-500"
                       />
@@ -1074,7 +1173,7 @@
                       </div>
                       <input 
                         type="number"
-                        value={item.actualAmount}
+                        value={item.history?.[monthKey] !== undefined ? item.history[monthKey] : item.actualAmount}
                         onChange={(e) => updateItemAmount(item.id, e.target.value)}
                         className="w-28 text-right font-extrabold text-sm border border-slate-300 rounded-lg p-1.5 focus:ring-2 focus:ring-indigo-500"
                       />
@@ -1121,7 +1220,7 @@
                     <span className="font-bold">{overtimeIncome.toLocaleString()}원</span>
                   </div>
                   <div className="text-[10px] text-indigo-600">
-                    * 산식: (기본급여수입 - 필수선출금(고정+변동+투자))
+                    * 산식: (기본급여수입 - 필수선출금(고정+변동+투자)) [상여금/인센티브/월세 제외]
                   </div>
                 </div>
 
@@ -1142,7 +1241,7 @@
       const [name, setName] = useState('');
       const [note, setNote] = useState('');
       const [isAccumulating, setIsAccumulating] = useState(true);
-      const [startDate, setStartDate] = useState('2026-01-01');
+      const [startDate, setStartDate] = useState('2024-01-01');
 
       const addAccount = () => {
         if (!name) return;
@@ -1267,9 +1366,13 @@ function doPost(e) {
 }`;
 
       const copyCode = () => {
-        navigator.clipboard?.writeText(gasScriptCode);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+        try {
+          navigator.clipboard?.writeText(gasScriptCode);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        } catch(e) {
+          alert('스크립트 복사에 실패했습니다.');
+        }
       };
 
       return (
@@ -1391,6 +1494,23 @@ function doPost(e) {
               </button>
             </div>
 
+            {type === 'INCOME' && (
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-600">수입 세부 구분</label>
+                <select 
+                  value={category} 
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="w-full border p-2.5 rounded-xl text-xs bg-white"
+                >
+                  <option value="급여">기본 급여</option>
+                  <option value="월세">월세 임대 수입</option>
+                  <option value="상여금">명절 상여금 (초과근무 제외)</option>
+                  <option value="인센티브">비정기 인센티브/성과급 (초과근무 제외)</option>
+                  <option value="기타">기타 수입</option>
+                </select>
+              </div>
+            )}
+
             {(type === 'EXPENSE' || type === 'INVESTMENT') && (
               <div className="flex items-center space-x-2 text-xs py-1">
                 <input 
@@ -1408,7 +1528,7 @@ function doPost(e) {
 
             <input 
               type="text" 
-              placeholder="항목명 (예: 아파트 관리비, 연금저축, 기본급)" 
+              placeholder="항목명 (예: 아파트 관리비, 성과급 인센티브, 연금저축)" 
               value={title} 
               onChange={(e) => setTitle(e.target.value)} 
               className="w-full border p-2.5 rounded-xl text-xs" 
@@ -1448,7 +1568,114 @@ function doPost(e) {
       );
     }
 
-    function TrendChart({ transactions, currentYear, currentMonth }) {
+    function EditTransactionModal({ editTx, accounts, onSave, onClose }) {
+      const [title, setTitle] = useState(editTx.title || '');
+      const [category, setCategory] = useState(editTx.category || '공과금');
+      const [targetAccount, setTargetAccount] = useState(editTx.targetAccount || accounts[0]?.name || '공과금 통장');
+      const [isFixed, setIsFixed] = useState(editTx.isFixed !== undefined ? editTx.isFixed : true);
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!title.trim()) return;
+        onSave({
+          ...editTx,
+          title: title.trim(),
+          category,
+          targetAccount,
+          isFixed
+        });
+      };
+
+      return (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn">
+          <form onSubmit={handleSubmit} className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-2xl space-y-3">
+            <div className="flex justify-between items-center border-b pb-2">
+              <div className="flex items-center space-x-2">
+                <i className="fa-solid fa-pen-to-square text-indigo-600 text-sm"></i>
+                <h3 className="font-extrabold text-slate-800 text-sm">✏️ 항목 정보 수정</h3>
+              </div>
+              <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
+                <i className="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-slate-600">항목 이름</label>
+              <input 
+                type="text" 
+                value={title} 
+                onChange={(e) => setTitle(e.target.value)} 
+                className="w-full border border-slate-300 p-2.5 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none" 
+                required 
+              />
+            </div>
+
+            {editTx.type === 'INCOME' && (
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-600">수입 세부 구분</label>
+                <select 
+                  value={category} 
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="w-full border border-slate-300 p-2.5 rounded-xl text-xs bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                >
+                  <option value="급여">기본 급여</option>
+                  <option value="월세">월세 임대 수입</option>
+                  <option value="상여금">명절 상여금 (초과근무 제외)</option>
+                  <option value="인센티브">비정기 인센티브/성과급 (초과근무 제외)</option>
+                  <option value="기타">기타 수입</option>
+                </select>
+              </div>
+            )}
+
+            {(editTx.type === 'EXPENSE' || editTx.type === 'INVESTMENT') && (
+              <div className="flex items-center space-x-2 text-xs py-1">
+                <input 
+                  type="checkbox" 
+                  id="editFixedCheck" 
+                  checked={isFixed} 
+                  onChange={(e) => setIsFixed(e.target.checked)} 
+                  className="rounded text-indigo-600"
+                />
+                <label htmlFor="editFixedCheck" className="font-semibold text-slate-700">
+                  {editTx.type === 'INVESTMENT' ? '고정 투자 여부 (매달 정액 적립/투자)' : '고정비 여부 (체크 시 매달 정액 지출)'}
+                </label>
+              </div>
+            )}
+
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-slate-600">목적 통장 지정</label>
+              <select 
+                value={targetAccount} 
+                onChange={(e) => setTargetAccount(e.target.value)}
+                className="w-full border border-slate-300 p-2.5 rounded-xl text-xs bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              >
+                {accounts.map(a => (
+                  <option key={a.id} value={a.name}>{a.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+              <button 
+                type="button" 
+                onClick={onClose}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-2.5 rounded-xl transition-colors"
+              >
+                취소
+              </button>
+              <button 
+                type="submit" 
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-2.5 rounded-xl shadow transition-colors"
+              >
+                저장하기
+              </button>
+            </div>
+          </form>
+        </div>
+      );
+    }
+
+    function TrendChart({ transactions, currentYear, currentMonth, monthKey }) {
       const canvasRef = useRef(null);
 
       const last6Months = useMemo(() => {
@@ -1487,7 +1714,10 @@ function doPost(e) {
             if (tx.history && tx.history[m.key] !== undefined) {
               return Number(tx.history[m.key]);
             }
-            return Number(tx.actualAmount) || Number(tx.estimatedAmount) || 0;
+            if (m.key === monthKey) {
+              return Number(tx.actualAmount) || Number(tx.estimatedAmount) || 0;
+            }
+            return 0;
           });
 
           return {
@@ -1525,7 +1755,7 @@ function doPost(e) {
         });
 
         return () => chart.destroy();
-      }, [transactions, last6Months]);
+      }, [transactions, last6Months, monthKey]);
 
       return (
         <div className="h-56 w-full">
@@ -1534,7 +1764,7 @@ function doPost(e) {
       );
     }
 
-    function IncomeExpenseInvestChart({ transactions, currentYear, currentMonth }) {
+    function IncomeExpenseInvestChart({ transactions, currentYear, currentMonth, monthKey }) {
       const canvasRef = useRef(null);
 
       const last6Months = useMemo(() => {
@@ -1556,22 +1786,29 @@ function doPost(e) {
         if (!canvasRef.current) return;
         const ctx = canvasRef.current.getContext('2d');
 
+        const getMonthVal = (t, mKey) => {
+          if (t.history && t.history[mKey] !== undefined) return Number(t.history[mKey]) || 0;
+          if (mKey === monthKey) return Number(t.actualAmount) || 0;
+          if (t.isFixed) return Number(t.estimatedAmount) || 0;
+          return 0;
+        };
+
         const incomeData = last6Months.map(m => {
           return transactions
             .filter(t => t.type === 'INCOME')
-            .reduce((sum, t) => sum + (t.history?.[m.key] !== undefined ? Number(t.history[m.key]) : Number(t.actualAmount)), 0);
+            .reduce((sum, t) => sum + getMonthVal(t, m.key), 0);
         });
 
         const expenseData = last6Months.map(m => {
           return transactions
             .filter(t => t.type === 'EXPENSE')
-            .reduce((sum, t) => sum + (t.history?.[m.key] !== undefined ? Number(t.history[m.key]) : Number(t.actualAmount)), 0);
+            .reduce((sum, t) => sum + getMonthVal(t, m.key), 0);
         });
 
         const investData = last6Months.map(m => {
           return transactions
             .filter(t => t.type === 'INVESTMENT')
-            .reduce((sum, t) => sum + (t.history?.[m.key] !== undefined ? Number(t.history[m.key]) : Number(t.actualAmount)), 0);
+            .reduce((sum, t) => sum + getMonthVal(t, m.key), 0);
         });
 
         const chart = new Chart(ctx, {
@@ -1618,7 +1855,7 @@ function doPost(e) {
         });
 
         return () => chart.destroy();
-      }, [transactions, last6Months]);
+      }, [transactions, last6Months, monthKey]);
 
       return (
         <div className="h-56 w-full">
@@ -1627,10 +1864,11 @@ function doPost(e) {
       );
     }
 
-    window.onload = function() {
-      const root = ReactDOM.createRoot(document.getElementById('root'));
+    const rootElement = document.getElementById('root');
+    if (rootElement) {
+      const root = ReactDOM.createRoot(rootElement);
       root.render(<PaydayApp />);
-    };
+    }
   </script>
 </body>
 </html>
